@@ -237,8 +237,9 @@ def test_targets_come_last_with_exclusions():
 def test_plan_separates_managed_arguments():
     config = base()
     config.techniques.tcp = TcpScanTechnique.SYN
-    plan = build_command_plan(NMAP, config, xml_output=Path("/tmp/run/result.xml"), stats_interval="2s", noninteractive=True)
-    assert plan.arguments == ["-sS", "-oX", "/tmp/run/result.xml", "--stats-every", "2s", "--noninteractive", "192.168.1.0/24"]
+    xml = Path("/tmp/run/result.xml")
+    plan = build_command_plan(NMAP, config, xml_output=xml, stats_interval="2s", noninteractive=True)
+    assert plan.arguments == ["-sS", "-oX", str(xml), "--stats-every", "2s", "--noninteractive", "192.168.1.0/24"]
     assert plan.user_arguments == ["-sS"]
     assert plan.display_user_command() == "nmap -sS 192.168.1.0/24"
 
