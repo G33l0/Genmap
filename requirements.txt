@@ -1,0 +1,5 @@
+PyQt6>=6.7
+SQLAlchemy>=2.0
+alembic>=1.13
+pydantic>=2.7
+defusedxml>=0.7
