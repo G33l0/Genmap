@@ -386,6 +386,8 @@ def salvage_truncated_xml(data: bytes) -> Optional[bytes]:
 
     Nmap flushes complete <host> elements as it goes, so cutting after the
     last one and closing <nmaprun> recovers everything that was finished.
+    When no host finished, the header region is cut back to the last tag
+    boundary that still forms a well formed document.
     """
     if b"<nmaprun" not in data:
         return None
@@ -393,21 +395,19 @@ def salvage_truncated_xml(data: bytes) -> Optional[bytes]:
         return data
     matches = list(_HOST_CLOSE.finditer(data))
     if matches:
-        cut = matches[-1].end()
-        return data[:cut] + b"\n</nmaprun>\n"
-    # No hosts finished; keep the header if the <nmaprun> tag itself is complete.
+        return data[: matches[-1].end()] + b"\n</nmaprun>\n"
     header_end = data.find(b">", data.find(b"<nmaprun"))
     if header_end == -1:
         return None
-    tail = data[header_end + 1 :]
-    # Drop any partially written element after the header.
-    partial = tail.rfind(b"<")
-    if partial != -1 and tail.rfind(b">") < partial:
-        tail = tail[:partial]
-    # Keep only complete top level children by removing anything after the last '>'.
-    last_close = tail.rfind(b">")
-    tail = tail[: last_close + 1] if last_close != -1 else b""
-    return data[: header_end + 1] + tail + b"\n</nmaprun>\n"
+    boundaries = [header_end + 1] + [header_end + 1 + m.end() for m in re.finditer(rb">", data[header_end + 1 :])]
+    for cut in reversed(boundaries):
+        candidate = data[:cut] + b"\n</nmaprun>\n"
+        try:
+            SafeElementTree.fromstring(candidate)
+        except Exception:
+            continue
+        return candidate
+    return None
 
 
 def parse_nmap_xml_file(path: Path) -> ScanResult:

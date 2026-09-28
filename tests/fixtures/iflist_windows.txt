@@ -1,0 +1,12 @@
+Starting Nmap 7.95 ( https://nmap.org ) at 2025-03-11 09:20 W. Europe Standard Time
+************************INTERFACES************************
+DEV   (SHORT)               IP/MASK                     TYPE        UP   MTU   MAC
+eth0  (Ethernet)            192.168.56.20/24            ethernet    up   1500  08:00:27:11:22:33
+eth0  (Ethernet)            fe80::a00:27ff:fe11:2233/64 ethernet    up   1500  08:00:27:11:22:33
+eth1  (Wi-Fi 2)             (none)/0                    ethernet    down 1500  AC:12:03:44:55:66
+lo0   (Loopback Pseudo-Interface 1) 127.0.0.1/8         loopback    up   -1
+
+**************************ROUTES**************************
+DST/MASK                    DEV  METRIC GATEWAY
+192.168.56.0/24             eth0 281
+0.0.0.0/0                   eth0 281    192.168.56.1

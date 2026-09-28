@@ -238,7 +238,7 @@ class MainWindow(QMainWindow):
         self._current_key = key
         self.stack.setCurrentWidget(page)
         self.sidebar.select(key)
-        self.setWindowTitle(f"{page.page_title} - {APP_NAME}")
+        self.setWindowTitle(f"{APP_NAME} | {page.page_title}")
         page.on_shown()
         if key not in ("scan_monitor", "results"):
             self.context.settings.general.last_page = key

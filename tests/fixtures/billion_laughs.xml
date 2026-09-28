@@ -1,0 +1,7 @@
+<?xml version="1.0"?>
+<!DOCTYPE nmaprun [
+  <!ENTITY lol "lol">
+  <!ENTITY lol2 "&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;&lol;">
+  <!ENTITY lol3 "&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;&lol2;">
+]>
+<nmaprun scanner="nmap" args="&lol3;" version="7.95"></nmaprun>

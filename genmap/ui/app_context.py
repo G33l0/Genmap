@@ -35,7 +35,7 @@ class _ProbeTask(QRunnable):
     def run(self) -> None:
         try:
             env = self._module.refresh_environment()
-        except Exception as exc:  # pragma: no cover - defensive
+        except Exception as exc:  # pragma: no cover
             log.exception("Environment probe crashed")
             self._signals.failed.emit(exc)
             return

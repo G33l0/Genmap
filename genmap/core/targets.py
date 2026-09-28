@@ -68,8 +68,9 @@ def _is_hostname(text: str) -> bool:
     labels = stripped.split(".")
     if not all(_HOSTNAME_LABEL.match(label) for label in labels):
         return False
-    # A purely numeric dotted name is a malformed IP, not a hostname.
-    return not all(label.isdigit() for label in labels)
+    # The last label of a real name always contains a letter; anything else
+    # is a malformed address or octet range rather than a hostname.
+    return any(c.isalpha() for c in labels[-1])
 
 
 def _octet_range_size(part: str) -> int:

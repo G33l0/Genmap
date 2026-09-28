@@ -194,4 +194,6 @@ def form_layout() -> QFormLayout:
 
 def hint(text: str) -> QLabel:
     widget = label(text, role="small", wrap=True)
+    # Wrapped labels otherwise stay at their preferred width inside form layouts.
+    widget.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
     return widget

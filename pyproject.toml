@@ -8,7 +8,6 @@ version = "0.1.0"
 description = "A modern PyQt6 desktop frontend and orchestration platform for Nmap"
 readme = "README.md"
 requires-python = ">=3.13"
-license = { text = "MIT" }
 authors = [{ name = "Genmap contributors" }]
 keywords = ["nmap", "network", "security", "pyqt6", "scanner"]
 classifiers = [
