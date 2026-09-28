@@ -25,6 +25,7 @@ class GeneralSettings(SettingsSection):
     last_page: str = "dashboard"
     check_environment_on_startup: bool = True
     show_welcome_hints: bool = True
+    recent_targets: list[str] = Field(default_factory=list)
 
 
 class AppearanceSettings(SettingsSection):

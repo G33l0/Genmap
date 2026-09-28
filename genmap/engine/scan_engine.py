@@ -103,8 +103,9 @@ class ScanJob(QObject):
     def start(self) -> None:
         if self._keep_logs:
             try:
-                self._stdout_file = self.store.stdout_path(self.run_id).open("w", encoding="utf-8")
-                self._stderr_file = self.store.stderr_path(self.run_id).open("w", encoding="utf-8")
+                # Line buffered so the log survives if Genmap itself is killed mid scan.
+                self._stdout_file = self.store.stdout_path(self.run_id).open("w", encoding="utf-8", buffering=1)
+                self._stderr_file = self.store.stderr_path(self.run_id).open("w", encoding="utf-8", buffering=1)
             except OSError as exc:
                 log.warning("Console logs disabled for %s: %s", self.run_id, exc)
         self.record.status = RunStatus.RUNNING

@@ -20,6 +20,7 @@ from genmap.nmap.capabilities import CapabilitySet, detect_capabilities
 from genmap.nmap.interfaces import InterfaceList, parse_iflist_output
 from genmap.nmap.locator import LocatedNmap, find_data_directory, locate_nmap, validate_executable_path
 from genmap.nmap.npcap import CaptureDriverInfo, CaptureDriverStatus, detect_capture_driver
+from genmap.nmap.nse import ScriptCatalog, load_script_catalog
 from genmap.nmap.privileges import PrivilegeLevel, detect_privilege_level
 from genmap.nmap.version import NmapVersion, parse_version_output
 
@@ -37,6 +38,7 @@ class NmapEnvironment:
     privileges: PrivilegeLevel = PrivilegeLevel.UNKNOWN
     interfaces: Optional[InterfaceList] = None
     capabilities: CapabilitySet = field(default_factory=CapabilitySet)
+    scripts: ScriptCatalog = field(default_factory=ScriptCatalog)
     diagnostics: list[Diagnostic] = field(default_factory=list)
 
     @property
@@ -77,6 +79,7 @@ def probe_environment(
     *,
     timeout: float = 20.0,
     include_interfaces: bool = True,
+    data_directory: Optional[str] = None,
 ) -> NmapEnvironment:
     env = NmapEnvironment()
     env.privileges = detect_privilege_level()
@@ -162,8 +165,22 @@ def probe_environment(
             )
         )
 
-    env.data_directory = find_data_directory(located.path)
-    if env.data_directory is None:
+    if data_directory and Path(data_directory).expanduser().is_dir():
+        env.data_directory = Path(data_directory).expanduser()
+    else:
+        env.data_directory = find_data_directory(located.path)
+    if env.data_directory is not None:
+        env.scripts = load_script_catalog(env.data_directory)
+        if not env.scripts.scripts:
+            env.diagnostics.append(
+                Diagnostic(
+                    DiagnosticLevel.WARNING,
+                    "NSE script database not found",
+                    f"No readable scripts/script.db under {env.data_directory}.",
+                    "Script names can still be typed manually. Running nmap --script-updatedb as administrator rebuilds the database.",
+                )
+            )
+    else:
         env.diagnostics.append(
             Diagnostic(
                 DiagnosticLevel.WARNING,

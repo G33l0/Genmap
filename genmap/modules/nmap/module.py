@@ -64,11 +64,18 @@ class NmapModule(Module):
         settings = getattr(self.context, "settings", None)
         return float(getattr(getattr(settings, "nmap", None), "probe_timeout_seconds", 20))
 
+    def configured_data_directory(self) -> Optional[str]:
+        if self.context is None:
+            return None
+        settings = getattr(self.context, "settings", None)
+        return getattr(getattr(settings, "nmap", None), "data_directory", None)
+
     def refresh_environment(self, *, include_interfaces: bool = True) -> NmapEnvironment:
         env = probe_environment(
             self.configured_path(),
             timeout=self.probe_timeout(),
             include_interfaces=include_interfaces,
+            data_directory=self.configured_data_directory(),
         )
         with self._lock:
             self._environment = env

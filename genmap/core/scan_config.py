@@ -32,6 +32,7 @@ class ScanMode(str, Enum):
 
 
 class TcpScanTechnique(str, Enum):
+    AUTO = "auto"  # no flag: Nmap uses SYN when privileged, connect otherwise
     SYN = "syn"
     CONNECT = "connect"
     ACK = "ack"
@@ -93,7 +94,7 @@ class TargetSpecification(StrictModel):
 
 class ScanTechniques(StrictModel):
     mode: ScanMode = ScanMode.PORT_SCAN
-    tcp: Optional[TcpScanTechnique] = TcpScanTechnique.SYN
+    tcp: Optional[TcpScanTechnique] = TcpScanTechnique.AUTO
     udp: bool = False
     sctp: Optional[SctpScanTechnique] = None
     ip_protocol: bool = False
@@ -128,7 +129,12 @@ class ScanTechniques(StrictModel):
     def uses_raw_packets(self) -> bool:
         if self.mode != ScanMode.PORT_SCAN:
             return False
-        raw_tcp = self.tcp not in (None, TcpScanTechnique.CONNECT, TcpScanTechnique.FTP_BOUNCE)
+        raw_tcp = self.tcp not in (
+            None,
+            TcpScanTechnique.AUTO,
+            TcpScanTechnique.CONNECT,
+            TcpScanTechnique.FTP_BOUNCE,
+        )
         return raw_tcp or self.udp or self.sctp is not None or self.ip_protocol
 
 
@@ -472,6 +478,11 @@ def validate_configuration(config: ScanConfiguration) -> list[ValidationIssue]:
             error("FTP bounce scan requires an FTP relay host.")
         if tech.tcp == TcpScanTechnique.IDLE and (tech.udp or tech.sctp or tech.ip_protocol):
             error("Idle scan cannot be combined with UDP, SCTP, or IP protocol scans.")
+        if tech.tcp == TcpScanTechnique.AUTO and (tech.udp or tech.sctp or tech.ip_protocol):
+            warning(
+                "Nmap skips TCP when another scan type is given without a TCP technique.",
+                "Choose SYN or connect explicitly to scan TCP as well.",
+            )
     else:
         if config.ports.mode != PortSelectionMode.DEFAULT:
             warning("Port options are ignored in ping only and list only modes.")
@@ -519,8 +530,13 @@ def validate_configuration(config: ScanConfiguration) -> list[ValidationIssue]:
         error("Choose either packet fragmentation or a custom MTU, not both.")
     if sum(1 for v in (evasion.data_hex, evasion.data_string, evasion.data_length) if v not in (None, "")) > 1:
         error("Only one payload option can be used at a time.")
-    if evasion.active and tech.tcp == TcpScanTechnique.CONNECT and not (tech.udp or tech.sctp or tech.ip_protocol):
-        warning("Most evasion options require raw packet scans and are ignored by TCP connect scans.")
+    if evasion.active and tech.tcp in (TcpScanTechnique.CONNECT, TcpScanTechnique.AUTO) and not (
+        tech.udp or tech.sctp or tech.ip_protocol
+    ):
+        warning(
+            "Most evasion options only apply to raw packet scans; TCP connect scans ignore them.",
+            "Select the SYN technique if you intend to use packet options.",
+        )
 
     if config.network.send_ethernet and config.network.send_ip:
         error("Choose either raw Ethernet or raw IP sending, not both.")

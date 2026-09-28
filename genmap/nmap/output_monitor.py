@@ -21,6 +21,7 @@ _TIMING = re.compile(
 )
 _DISCOVERED = re.compile(r"^Discovered (?P<state>open|closed|filtered|open\|filtered) port (?P<port>\d+)/(?P<proto>\w+) on (?P<host>\S+)$")
 _REPORT = re.compile(r"^Nmap scan report for (?P<name>.+?)(?: \((?P<addr>[^)]+)\))?$")
+_PORT_TABLE = re.compile(r"^(?P<port>\d+)/(?P<proto>tcp|udp|sctp|ip)\s+(?P<state>[a-z|]+)\s+(?P<service>\S+)")
 _HOST_DOWN = re.compile(r"^Note: Host seems down|^Host .* seems down", re.IGNORECASE)
 _HOST_UP = re.compile(r"^Host is up")
 _DONE = re.compile(r"^Nmap done: (?P<addresses>\d+) IP address(?:es)? \((?P<up>\d+) hosts? up\) scanned in (?P<seconds>[\d.]+) seconds")
@@ -170,6 +171,15 @@ class OutputMonitor:
 
         if _HOST_UP.match(stripped):
             return "host_up"
+
+        match = _PORT_TABLE.match(stripped)
+        if match:
+            if match.group("state") == "open" and match.group("service") not in ("unknown", "?"):
+                service = match.group("service").rstrip("?")
+                if service not in self.state.services:
+                    self.state.services.add(service)
+                    return "service"
+            return None
 
         match = _DONE.match(stripped)
         if match:

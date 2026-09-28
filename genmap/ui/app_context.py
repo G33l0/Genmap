@@ -60,6 +60,9 @@ class AppContext(QObject):
         self.registry.register(self.nmap_module)
         self.registry.initialize_all(ModuleContext(paths=paths, settings=settings_store.settings, logger=logging.getLogger("genmap.modules")))
         self.run_store = RunStore(paths.scans_dir)
+        recovered = self.run_store.recover_interrupted()
+        if recovered:
+            log.info("Marked %d unfinished scan(s) from a previous session as interrupted", len(recovered))
         self.engine = ScanEngine(self.run_store, executable_provider=self.nmap_module.executable, parent=self)
         self._probe_signals = _ProbeSignals()
         self._probe_signals.finished.connect(self._on_probe_finished)
@@ -118,6 +121,15 @@ class AppContext(QObject):
         self._probing = False
         log.error("Environment probe failed: %s", exc)
         self.environment_changed.emit(self.nmap_module.environment or NmapEnvironment())
+
+    def remember_targets(self, targets: list[str]) -> None:
+        general = self.settings.general
+        recent = [t for t in targets if t] + [t for t in general.recent_targets if t not in targets]
+        general.recent_targets = recent[:20]
+        try:
+            self.settings_store.save()
+        except Exception:
+            log.warning("Could not save recent targets", exc_info=True)
 
     def shutdown(self) -> None:
         self.engine.cancel_all()

@@ -109,7 +109,7 @@ def build_user_arguments(config: ScanConfiguration) -> tuple[list[str], list[str
             args.extend(["-sI", tech.idle_zombie or ""])
         elif tech.tcp == TcpScanTechnique.FTP_BOUNCE:
             args.extend(["-b", tech.ftp_bounce_relay or ""])
-        elif tech.tcp is not None:
+        elif tech.tcp in _TCP_FLAGS:
             args.append(_TCP_FLAGS[tech.tcp])
         if tech.udp:
             args.append("-sU")

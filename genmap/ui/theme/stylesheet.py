@@ -51,6 +51,11 @@ QLabel[status="ok"] {{ color: {p.success}; font-weight: 600; }}
 QLabel[status="warning"] {{ color: {p.warning}; font-weight: 600; }}
 QLabel[status="error"] {{ color: {p.danger}; font-weight: 600; }}
 QLabel[status="info"] {{ color: {p.info}; font-weight: 600; }}
+QCheckBox[status="warning"] {{ color: {p.warning}; }}
+QPushButton[flat="true"][status="ok"] {{ color: {p.success}; }}
+QPushButton[flat="true"][status="warning"] {{ color: {p.warning}; }}
+QPushButton[flat="true"][status="error"] {{ color: {p.danger}; }}
+QPushButton[flat="true"][status="info"] {{ color: {p.info}; }}
 
 QFrame[card="true"] {{
     background: {p.surface};
@@ -103,6 +108,10 @@ QPushButton[accent="true"]:disabled {{ background: {p.border}; border-color: {p.
 QPushButton[danger="true"] {{
     color: {p.danger};
     border-color: {p.danger};
+}}
+QPushButton[danger="true"]:disabled {{
+    color: {p.text_muted};
+    border-color: {p.border};
 }}
 QPushButton[flat="true"] {{
     border: none;
@@ -318,7 +327,7 @@ QListWidget#sidebar {{
     padding: 6px 0;
 }}
 QListWidget#sidebar::item {{
-    padding: 9px 16px;
+    padding: 7px 16px;
     margin: 1px 8px;
     border-radius: 4px;
     min-height: 20px;
@@ -331,18 +340,19 @@ QListWidget#sidebar::item:selected {{
 }}
 QListWidget#sidebar::item:disabled {{ color: {p.sidebar_muted}; }}
 QWidget#sidebarContainer {{ background: {p.sidebar_bg}; }}
+QWidget#sidebarHeader {{ background: transparent; }}
 QLabel#brand {{
     color: {p.sidebar_text};
     font-size: {base_font_pt + 6}pt;
     font-weight: 700;
-    letter-spacing: 1px;
-    padding: 18px 20px 4px 20px;
+    letter-spacing: 2px;
+    padding: 0;
     background: transparent;
 }}
 QLabel#brandSub {{
     color: {p.sidebar_muted};
     font-size: {small}pt;
-    padding: 0 20px 12px 20px;
+    padding: 2px 20px 14px 62px;
     background: transparent;
 }}
 QLabel#sidebarFooter {{

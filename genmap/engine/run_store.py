@@ -36,6 +36,7 @@ class RunStatus(str, Enum):
     CANCELLED = "cancelled"
     TIMED_OUT = "timed_out"
     CRASHED = "crashed"
+    INTERRUPTED = "interrupted"
 
     @property
     def is_terminal(self) -> bool:
@@ -192,6 +193,31 @@ class RunStore:
                 log.warning("Skipping unreadable run %s: %s", directory.name, exc.details)
         records.sort(key=lambda r: r.created_at, reverse=True)
         return records[:limit] if limit else records
+
+    def recover_interrupted(self, active_run_ids: set[str] = frozenset()) -> list[str]:
+        """Mark runs left in a running state by a previous session as interrupted.
+
+        Returns the identifiers of the runs that were updated.
+        """
+        recovered: list[str] = []
+        for record in self.list_runs():
+            if record.status not in (RunStatus.RUNNING, RunStatus.PENDING) or record.run_id in active_run_ids:
+                continue
+            record.status = RunStatus.INTERRUPTED
+            record.error_message = "Genmap stopped before this scan finished."
+            record.error_remedy = "Hosts Nmap completed before that point are kept as partial results."
+            xml = self.xml_path(record.run_id)
+            if xml.is_file():
+                try:
+                    record.summary = summarize_result(parse_nmap_xml_file(xml))
+                except Exception:
+                    log.debug("Partial XML for %s not readable", record.run_id, exc_info=True)
+            try:
+                self.save(record)
+                recovered.append(record.run_id)
+            except StorageError:
+                log.warning("Could not update interrupted run %s", record.run_id)
+        return recovered
 
     def load_result(self, run_id: str) -> Optional[ScanResult]:
         path = self.xml_path(run_id)
