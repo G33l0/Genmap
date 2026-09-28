@@ -10,7 +10,7 @@ genmap/
   engine/      Process execution (QProcess) and on disk run storage
   modules/     Module contract, registry, and the Nmap module
   nmap/        Nmap adapter: discovery, probing, command building, parsing
-  core/        Pure domain logic: configuration, targets, ports, results
+  core/        Pure domain logic: configuration, targets, ports, results, NSE selection
   settings/    Settings schema and persistence
 ```
 
@@ -41,6 +41,15 @@ New Scan form ──dump──> dict ──validate──> ScanConfiguration
 3. **Execution.** `ScanJob` wraps a `QProcess` started with an argument list. Output is decoded incrementally, split into lines, written to line buffered log files, and fed to `OutputMonitor`, which extracts only what Nmap actually printed: timing estimates, discovered ports, host reports, and known error messages. Cancellation terminates the process, and on Windows kills it, because console programs ignore close requests. A watchdog kills it if terminate is ignored.
 4. **Storage.** `RunStore` gives each run a folder. The folder is the durable record, and raw output is never discarded. Runs left in a running state by a crash are marked *interrupted* at the next start, and their partial XML is summarised.
 5. **Parsing.** The XML parser uses `defusedxml`. Unknown elements and attributes are kept in `extra` fields instead of being dropped. If a file ends early, the parser cuts it after the last complete `<host>`, closes the document, and flags the result as truncated.
+
+## Accuracy rules
+
+Genmap tries hard not to claim more than Nmap established:
+
+* **Script warnings are resolved, not guessed.** `core/nse.py` evaluates `--script` expressions against the installed catalog with Nmap's precedence (`not` above `and` above `or`), so warnings name real scripts.
+* **Errors are matched on Nmap's exact wording.** `OutputMonitor` only raises a problem for lines Nmap prints when something fails, never for script output that happens to contain the same words.
+* **Probed and guessed services are kept apart.** `Service.is_probed` separates version detection results from names Nmap reads from its port table.
+* **A zero exit code is not automatically a success.** If Nmap reported a recognised problem, the run ends as *Completed with warnings*.
 
 ## Why these choices
 

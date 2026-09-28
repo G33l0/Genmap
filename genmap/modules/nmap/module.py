@@ -11,7 +11,7 @@ from pydantic import BaseModel, ValidationError
 from genmap import __version__
 from genmap.core.diagnostics import Diagnostic
 from genmap.core.scan_config import ScanConfiguration, ValidationIssue, issues_from_validation_error, validate_configuration
-from genmap.modules.base import ExternalToolRequirement, Module, ModuleContext, ModuleManifest
+from genmap.modules.base import ExternalToolRequirement, Module, ModuleManifest
 from genmap.nmap.environment import NmapEnvironment, probe_environment
 
 

@@ -37,6 +37,7 @@ class Palette:
     console_text: str
     console_stderr: str
     badge_bg: str
+    ui_font_family: str | None = None
 
 
 LIGHT = Palette(
@@ -105,7 +106,47 @@ DARK = Palette(
     badge_bg="#2F3540",
 )
 
-PALETTES = {LIGHT.name: LIGHT, DARK.name: DARK}
+HACKER = Palette(
+    name="hacker",
+    is_dark=True,
+    window="#07090A",
+    surface="#0C1110",
+    surface_alt="#111A17",
+    border="#1C3A2A",
+    border_strong="#2A5A40",
+    text="#B8F5C8",
+    text_muted="#6FB48A",
+    accent="#22D36B",
+    accent_hover="#3BE884",
+    accent_pressed="#19B85A",
+    accent_text="#03140A",
+    success="#3BE884",
+    warning="#E6C84A",
+    danger="#FF6B6B",
+    info="#4FD1C5",
+    selection="#133D27",
+    selection_text="#D8FFE4",
+    input_bg="#050807",
+    sidebar_bg="#040605",
+    sidebar_text="#9EEBB5",
+    sidebar_muted="#4E8F68",
+    sidebar_selected_bg="#0F2E1E",
+    sidebar_selected_text="#3BE884",
+    sidebar_hover_bg="#0A1D13",
+    console_bg="#000000",
+    console_text="#5CFF8F",
+    console_stderr="#FF8080",
+    badge_bg="#0F2E1E",
+    ui_font_family="'Cascadia Mono', Consolas, 'JetBrains Mono', 'DejaVu Sans Mono', monospace",
+)
+
+PALETTES = {LIGHT.name: LIGHT, DARK.name: DARK, HACKER.name: HACKER}
+THEME_CHOICES: tuple[tuple[str, str], ...] = (
+    ("system", "Follow Windows setting"),
+    ("light", "Light"),
+    ("dark", "Dark"),
+    ("hacker", "Hacker"),
+)
 
 
 def palette_by_name(name: str) -> Palette:

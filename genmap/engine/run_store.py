@@ -63,7 +63,7 @@ class RunSummary(BaseModel):
     hosts_total: int = 0
     hosts_up: int = 0
     open_ports: int = 0
-    services: int = 0
+    services: int = 0  # confirmed by version detection; port table guesses are not counted
     truncated: bool = False
     nmap_summary: Optional[str] = None
 
@@ -108,7 +108,7 @@ def summarize_result(result: ScanResult) -> RunSummary:
         hosts_total=len(result.hosts) or result.statistics.hosts_total,
         hosts_up=len(result.hosts_up) or result.statistics.hosts_up,
         open_ports=result.total_open_ports,
-        services=len(result.distinct_services),
+        services=len(result.identified_services),
         truncated=result.truncated,
         nmap_summary=result.statistics.summary,
     )

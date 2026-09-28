@@ -12,7 +12,6 @@ from PyQt6.QtWidgets import (
     QApplication,
     QDialog,
     QDialogButtonBox,
-    QFileDialog,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -40,6 +39,7 @@ from genmap.ui.pages.new_scan import NewScanPage
 from genmap.ui.pages.results import ResultsPage
 from genmap.ui.pages.scan_monitor import ScanMonitorPage
 from genmap.ui.pages.settings import SettingsPage
+from genmap.ui.theme.palettes import THEME_CHOICES
 from genmap.ui.widgets.common import label, set_status
 from genmap.ui.widgets.sidebar import NavEntry, Sidebar
 
@@ -135,6 +135,7 @@ class MainWindow(QMainWindow):
         context.environment_probe_started.connect(lambda: self._set_nmap_status("Checking Nmap...", None))
         context.engine.job_started.connect(self._on_job_started)
         context.engine.job_finished.connect(self._on_job_finished)
+        context.settings_changed.connect(self._sync_theme_actions)
         self._restore_window_state()
 
     # Wiring ---------------------------------------------------------------
@@ -180,7 +181,7 @@ class MainWindow(QMainWindow):
         theme_menu = view_menu.addMenu("&Theme")
         group = QActionGroup(self)
         self._theme_actions: dict[str, QAction] = {}
-        for key, text in (("system", "Follow Windows setting"), ("light", "Light"), ("dark", "Dark")):
+        for key, text in THEME_CHOICES:
             action = theme_menu.addAction(text)
             action.setCheckable(True)
             action.setChecked(self.context.settings.appearance.theme == key)
@@ -300,7 +301,12 @@ class MainWindow(QMainWindow):
     def _set_theme(self, key: str) -> None:
         self.context.settings.appearance.theme = key
         self.context.settings_store.save()
-        self.settings_page.revert()
+        self.settings_page.sync_theme(key)
+
+    def _sync_theme_actions(self, settings) -> None:
+        action = self._theme_actions.get(settings.appearance.theme)
+        if action is not None and not action.isChecked():
+            action.setChecked(True)
 
     def _open_folder(self, path: Path) -> None:
         path.mkdir(parents=True, exist_ok=True)

@@ -57,6 +57,14 @@ Messages like `NSE: [shodan-api] Error: Please specify your ShodanAPI key` come 
 * Genmap uses Qt's per monitor DPI scaling. If text is too small or too large, change **Settings, Appearance, Base font size**.
 * Delete `window.ini` in the Genmap config folder to reset the window position.
 
+## Antivirus flags Genmap.exe
+
+Executables built with PyInstaller are sometimes flagged by heuristic antivirus engines even though they contain nothing harmful. Genmap's release build reduces this: it uses the one folder layout rather than a self extracting single file, does not compress with UPX, and embeds Windows version information. If a scanner still flags it, check the zip against the published `.sha256` file and report the false positive to the antivirus vendor. Nmap itself is also often flagged as a "hacking tool" by security products; that classification is about Nmap, not Genmap.
+
+## Checking a build
+
+`Genmap.exe --self-test report.json` exercises the bundled resources, the XML parser, command building, every page, and every theme in a throwaway data folder, then writes a JSON report. The exit code is 0 only when every check passed. It never touches your settings or scan history.
+
 ## Logs
 
 **Settings, Logging, Open log folder** opens the application logs. Each scan's own Nmap output is in its run folder, which you can reach from **Scan History, Show files**. Set the log level to *Debug* and reproduce the problem before reporting it.

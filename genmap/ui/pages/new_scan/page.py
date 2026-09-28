@@ -268,7 +268,7 @@ class NewScanPage(BasePage):
                 self._issues.append(ValidationIssue(severity="error", message=exc.message, remedy=exc.remedy))
             else:
                 self._issues.extend(ValidationIssue(severity="warning", message=w) for w in self._plan.warnings)
-                for notice in assess_intrusiveness(config, self.context.settings.nse.intrusive_categories):
+                for notice in self._notices(config):
                     self._issues.append(ValidationIssue(severity="notice", message=notice.message))
 
         if self._plan is not None:
@@ -309,6 +309,11 @@ class NewScanPage(BasePage):
         self.inspect_button.setEnabled(self._plan is not None)
         self._update_start_enabled()
 
+    def _notices(self, config: ScanConfiguration):
+        env = self.context.environment
+        catalog = env.scripts if env is not None and env.scripts.scripts else None
+        return assess_intrusiveness(config, self.context.settings.nse.intrusive_categories, catalog)
+
     def _update_start_enabled(self) -> None:
         env = self.context.environment
         ready = self._plan is not None and not has_errors(self._issues)
@@ -345,7 +350,7 @@ class NewScanPage(BasePage):
             return
         config = self._current
         env = self.context.environment
-        notices = assess_intrusiveness(config, self.context.settings.nse.intrusive_categories)
+        notices = self._notices(config)
         env_warnings: list[str] = []
         if env is not None:
             raw = env.capabilities.get("raw_packets")

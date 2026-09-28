@@ -8,64 +8,35 @@ from __future__ import annotations
 
 import logging
 import re
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
+from genmap.core.nse import (
+    CATEGORY_DESCRIPTIONS,
+    INTRUSIVE_CATEGORIES,
+    ScriptCatalog,
+    ScriptEntry,
+    ScriptExpressionError,
+    ScriptSelection,
+    select_scripts,
+)
+
+__all__ = [
+    "CATEGORY_DESCRIPTIONS",
+    "INTRUSIVE_CATEGORIES",
+    "ScriptCatalog",
+    "ScriptEntry",
+    "ScriptExpressionError",
+    "ScriptSelection",
+    "load_script_catalog",
+    "parse_script_db",
+    "select_scripts",
+]
 
 log = logging.getLogger(__name__)
 
 _ENTRY = re.compile(r'Entry\s*\{\s*filename\s*=\s*"(?P<file>[^"]+)"\s*,\s*categories\s*=\s*\{(?P<cats>[^}]*)\}')
 _CATEGORY = re.compile(r'"([^"]+)"')
-
-# Categories Nmap documents as potentially disruptive. The flag is advisory:
-# a script outside these categories is not guaranteed to be harmless.
-INTRUSIVE_CATEGORIES = frozenset({"intrusive", "brute", "dos", "exploit", "fuzzer", "malware"})
-
-CATEGORY_DESCRIPTIONS = {
-    "auth": "Checks authentication credentials or bypasses.",
-    "broadcast": "Discovers hosts by broadcasting on the local network.",
-    "brute": "Guesses credentials by brute force.",
-    "default": "The set run by -sC; chosen for speed and usefulness.",
-    "discovery": "Queries services and registries for more information.",
-    "dos": "May cause denial of service.",
-    "exploit": "Actively exploits vulnerabilities.",
-    "external": "Sends data to third party services on the Internet.",
-    "fuzzer": "Sends unexpected input to find bugs; can crash services.",
-    "intrusive": "Can crash services, use significant resources, or be seen as malicious.",
-    "malware": "Tests whether the target is infected with known malware.",
-    "safe": "Designed not to crash services or use excessive resources.",
-    "version": "Extends service version detection; runs with -sV.",
-    "vuln": "Checks for specific known vulnerabilities.",
-}
-
-
-@dataclass(frozen=True)
-class ScriptEntry:
-    name: str
-    categories: tuple[str, ...]
-
-    @property
-    def is_intrusive(self) -> bool:
-        return any(c in INTRUSIVE_CATEGORIES for c in self.categories)
-
-
-@dataclass
-class ScriptCatalog:
-    scripts: list[ScriptEntry] = field(default_factory=list)
-    source: Optional[Path] = None
-
-    @property
-    def categories(self) -> list[str]:
-        found: set[str] = set()
-        for script in self.scripts:
-            found.update(script.categories)
-        return sorted(found)
-
-    def names(self) -> list[str]:
-        return [s.name for s in self.scripts]
-
-    def by_category(self, category: str) -> list[ScriptEntry]:
-        return [s for s in self.scripts if category in s.categories]
 
 
 def parse_script_db(text: str) -> list[ScriptEntry]:

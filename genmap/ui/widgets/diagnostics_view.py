@@ -4,7 +4,7 @@ from __future__ import annotations
 
 from typing import Iterable, Optional
 
-from PyQt6.QtWidgets import QGridLayout, QLabel, QVBoxLayout, QWidget
+from PyQt6.QtWidgets import QGridLayout, QVBoxLayout, QWidget
 
 from genmap.core.diagnostics import Diagnostic, DiagnosticLevel
 from genmap.ui.widgets.common import label

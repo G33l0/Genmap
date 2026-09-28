@@ -1,3 +1,5 @@
+import pytest
+
 from genmap.nmap.output_monitor import OutputMonitor
 
 
@@ -63,4 +65,40 @@ def test_report_line_with_hostname():
 
 def test_port_table_services_only_count_open():
     monitor, _ = feed(["22/tcp open  ssh", "80/tcp closed http", "443/tcp open  https?", "9/tcp open unknown"])
-    assert monitor.state.services == {"ssh", "https"}
+    # "https?" is Nmap marking an uncertain guess, so it is not an identification.
+    assert monitor.state.services == {"ssh"}
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "/usr/bin/nmap: unrecognized option '--bogus'",
+        "C:\\Program Files (x86)\\Nmap\\nmap.exe: unrecognized option '--bogus'",
+        "Ports specified must be between 0 and 65535 inclusive",
+        "/usr/share/nmap/nse_main.lua:829: 'nosuch' did not match a category, filename, or directory",
+        "NSE: failed to initialize the script engine:",
+        "dnet: Failed to open device eth9",
+        "WARNING: Could not import all necessary Npcap functions. You may need to upgrade to the latest version.",
+        'Failed to resolve "nosuch.invalid".',
+    ],
+)
+def test_real_nmap_errors_are_recognised(line):
+    monitor, events = feed([line])
+    assert events == ["problem"]
+
+
+@pytest.mark.parametrize(
+    "line",
+    [
+        "|_http-title: Download Npcap for Windows",
+        "| ssl-cert: Subject: commonName=Failed to open device",
+        "NSE: Script Engine scan of 1 host",
+        "|   Error: server returned 500",
+        "80/tcp open  http    nginx 1.24 (Illegal port redirect test page)",
+        "Nmap scan report for pcap_open_live.example (10.0.0.1)",
+    ],
+)
+def test_script_output_and_banners_are_not_errors(line):
+    monitor, events = feed([line])
+    assert "problem" not in events
+    assert monitor.state.problems == []

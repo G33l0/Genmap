@@ -117,7 +117,8 @@ class DashboardPage(ScrollPage):
         metrics.setSpacing(10)
         self.last_hosts = Metric("Hosts up", "-")
         self.last_ports = Metric("Open ports", "-")
-        self.last_services = Metric("Services", "-")
+        self.last_services = Metric("Identified services", "-")
+        self.last_services.setToolTip("Services confirmed by Nmap's version detection.")
         for column, metric in enumerate((self.last_hosts, self.last_ports, self.last_services)):
             metrics.addWidget(metric, 0, column)
         self.last_card.add_layout(metrics)

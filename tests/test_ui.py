@@ -128,16 +128,20 @@ def test_results_filtering(window, fixtures):
 
     page.filter_field.set_current_value("service")
     page.filter_text.setText("ssh")
+    assert page._filter_timer.isActive()  # typing is debounced
+    page._apply_filter()
     assert page.proxy.rowCount() == 1
     host_index = page.proxy.index(0, 0)
     assert page.proxy.rowCount(host_index) == 1
 
     page.filter_field.set_current_value("os")
     page.filter_text.setText("routeros")
+    page._apply_filter()
     assert page.proxy.rowCount() == 1
 
     page.filter_field.set_current_value("all")
     page.filter_text.setText("")
+    page._apply_filter()
     page.filter_state.set_current_value("filtered")
     assert page.proxy.rowCount() == 2
     page.filter_state.set_current_value("")
@@ -221,3 +225,72 @@ def test_logo_resources(qapp):
     assert not app_icon().isNull()
     pixmap = logo_pixmap(48, 2.0)
     assert pixmap.width() == 96 and not pixmap.toImage().isNull()
+
+
+def test_hacker_theme_applies_and_menu_keeps_unsaved_settings(window, context):
+    page = window.settings_page
+    window.show_page("settings")
+    timeout_field = next(w for w in page._sections[4].widget().findChildren(type(page.nmap_path)) if w.placeholderText() == "e.g. 2s")
+    timeout_field.setText("5s")
+    page._mark_dirty()
+    window._theme_actions["hacker"].trigger()
+    assert context.settings.appearance.theme == "hacker"
+    assert context.theme.palette.name == "hacker"
+    assert "monospace" in context.app.styleSheet()
+    assert page.has_unsaved_changes() and timeout_field.text() == "5s"
+    assert page.theme_combo.current_value() == "hacker"
+    context.theme.apply("light")
+
+
+def test_monitor_attach_keeps_engine_connections(window, context):
+    from pathlib import Path
+
+    from genmap.core.scan_config import ScanConfiguration
+    from genmap.engine.scan_engine import ScanJob
+    from genmap.nmap.command_builder import build_command_plan
+
+    def make_job():
+        config = ScanConfiguration()
+        config.targets.targets = ["127.0.0.1"]
+        record = context.run_store.create(config)
+        return ScanJob(record, build_command_plan(Path("nmap"), config), context.run_store)
+
+    first, second = make_job(), make_job()
+    seen = []
+    first.finished.connect(lambda record: seen.append(record.run_id))
+    window.monitor.attach(first)
+    window.monitor.attach(second)
+    first.finished.emit(first.record)
+    assert seen == [first.record.run_id]
+
+
+def test_monitor_service_caption_reflects_version_detection(window, context):
+    from pathlib import Path
+
+    from genmap.core.scan_config import ScanConfiguration
+    from genmap.engine.scan_engine import ScanJob
+    from genmap.nmap.command_builder import build_command_plan
+
+    config = ScanConfiguration()
+    config.targets.targets = ["127.0.0.1"]
+    job = ScanJob(context.run_store.create(config), build_command_plan(Path("nmap"), config), context.run_store)
+    window.monitor.attach(job)
+    assert "port table" in window.monitor.metric_services.caption_label.text()
+    config.service_detection.enabled = True
+    job = ScanJob(context.run_store.create(config), build_command_plan(Path("nmap"), config), context.run_store)
+    window.monitor.attach(job)
+    assert window.monitor.metric_services.caption_label.text() == "Services identified"
+
+
+@pytest.mark.parametrize("theme", ["light", "dark", "hacker"])
+def test_theme_writes_indicator_images(qapp, tmp_path, theme):
+    from genmap.ui.theme.manager import ThemeManager
+
+    manager = ThemeManager(qapp, asset_dir=tmp_path / "assets")
+    manager.apply(theme)
+    sheet = qapp.styleSheet()
+    images = sorted((tmp_path / "assets").glob(f"*-{theme}-*.svg"))
+    assert len(images) == 6
+    for image in images:
+        assert image.as_posix() in sheet
+    assert "QComboBox::down-arrow" in sheet and "QCheckBox::indicator:checked" in sheet

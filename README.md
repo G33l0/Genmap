@@ -19,14 +19,17 @@ Genmap is in its first development phase. Everything listed here is implemented,
 * **Structured scan configuration.** Every option lives in a typed `ScanConfiguration` model rather than a command string. It covers scan types, ports, host discovery, DNS, service and OS detection, NSE scripts and arguments, timing, packet options, interfaces, and output. Seven built in starting points ship as ordinary configurations.
 * **Advanced arguments.** Anything without a dedicated control, including options from newer Nmap releases, can be typed as extra arguments. They are tokenised, checked, shown in the preview, and passed through untouched.
 * **Command Inspector.** Shows the full command, every argument and where it came from, the working folder, and environment notes before anything runs.
-* **Safe launch.** Nmap is started with an argument list and never through a shell. Intrusive NSE categories, spoofing, huge scopes, and random Internet targets need explicit confirmation.
-* **Live scan view.** Streams Nmap output and counts hosts, open ports, and services as Nmap reports them. Progress appears only when Nmap prints its own estimate. You can cancel at any point, and a time limit is available.
+* **Safe launch.** Nmap is started with an argument list and never through a shell. Script selections are resolved against the installed script database the way Nmap resolves them, so the warning names the exact scripts Nmap files as intrusive, brute, dos, exploit, fuzzer, or malware, and stays quiet when there are none. Spoofing, huge scopes, and random Internet targets also need explicit confirmation.
+* **Live scan view.** Streams Nmap output and counts hosts, open ports, and services as Nmap reports them. Service names only count as identified when version detection confirmed them; names Nmap takes from its port table are labelled as such. Progress appears only when Nmap prints its own estimate. You can cancel at any point, and a time limit is available.
 * **Results.** A secure XML parser produces normalised hosts, ports, services, CPEs, OS matches, uptime, traceroute, and NSE output, including structured script tables. Truncated files from cancelled scans are recovered. You can filter by host, port, protocol, state, service, product, version, OS, CPE, or NSE output, and export as the original XML, normalised JSON, or CSV.
 * **Scan history.** Every run keeps its configuration, command, console output, and XML. You can open, rerun, edit a copy, or delete any of them.
-* **Settings.** Covers general behaviour, appearance with light, dark, and system themes, Nmap, network, scanning, NSE, storage, reports, logging, and advanced options.
+* **Settings.** Covers general behaviour, appearance, Nmap, network, scanning, NSE, storage, reports, logging, and advanced options.
+* **Themes.** Light, dark, following the Windows setting, and a black and green hacker theme with a monospace interface. Switch from **View, Theme** or **Settings, Appearance**.
 * **Module system.** A versioned module contract, with Nmap as the first module, is ready for future tools.
 
 ![Results with port details and NSE output](docs/images/results.png)
+
+![Live scan in the hacker theme](docs/images/hacker-live-scan.png)
 
 ## Planned
 
@@ -62,6 +65,7 @@ Useful command line switches:
 genmap --diagnose          print Nmap diagnostics and exit
 genmap --open scan.xml     open an existing Nmap XML file
 genmap --log-level DEBUG   verbose application log
+genmap --self-test r.json  headless self test, writes a JSON report
 ```
 
 ## Authorized use only

@@ -27,13 +27,17 @@ pytest tests/test_command_builder.py -q
 
 The suite has three kinds of tests:
 
-* **Unit tests** cover targets, ports, time values, the configuration model, the command builder, argument review, the XML parser, the output monitor, version and interface parsing, capabilities, settings, the run store, modules, presets, and intrusiveness notices. They need no network and no Nmap.
+* **Unit tests** cover targets, ports, time values, the configuration model, the command builder, argument review, the XML parser, the output monitor (including banners and script output that must not be mistaken for errors), NSE expression resolution, scan outcomes, version and interface parsing, capabilities, settings, the run store, modules, presets, and intrusiveness notices. They need no network and no Nmap.
 * **UI tests** (`tests/test_ui.py`) build the real main window with pytest-qt on Qt's offscreen platform and exercise the New Scan form, result filtering, history, and settings.
 * **Integration tests** (`tests/test_integration_nmap.py`) run the installed Nmap against `127.0.0.1` using list and connect scans, so no privileges or network access are needed. They are skipped automatically when Nmap is not installed.
 
 Fixtures in `tests/fixtures` include real Nmap 7.94 output (a localhost scan with version and OS detection, a ping sweep, a list scan, the matching console output, and `--version` and `--iflist` output) plus a hand written multi host LAN inventory modelled on Nmap 7.95 output. There are also deliberately broken files: a truncated scan, an entity expansion attack, and XML that is not from Nmap.
 
 On a headless Linux machine Qt needs `libegl1`, `libxkbcommon0`, `libfontconfig1`, and `libdbus-1-3`. The tests set `QT_QPA_PLATFORM=offscreen` themselves.
+
+## Self test
+
+`python -m genmap --self-test report.json` runs the same headless checks CI runs against the packaged Windows executable. CI starts `Genmap.exe` with `Start-Process -Wait` because PowerShell does not wait for windowed programs, and it fails the job unless the report says `ok` and `frozen`.
 
 ## Conventions
 

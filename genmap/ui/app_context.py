@@ -54,7 +54,7 @@ class AppContext(QObject):
         self.app = app
         self.paths = paths
         self.settings_store = settings_store
-        self.theme = ThemeManager(app, self)
+        self.theme = ThemeManager(app, self, asset_dir=paths.cache_dir / "theme")
         self.registry = ModuleRegistry()
         self.nmap_module = NmapModule()
         self.registry.register(self.nmap_module)

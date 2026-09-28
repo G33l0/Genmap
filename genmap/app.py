@@ -21,6 +21,7 @@ def _parse_args(argv: Sequence[str]) -> argparse.Namespace:
     parser.add_argument("--open", metavar="XML", type=Path, help="open an Nmap XML file on startup")
     parser.add_argument("--log-level", choices=["DEBUG", "INFO", "WARNING", "ERROR"], help="override the configured log level")
     parser.add_argument("--diagnose", action="store_true", help="print Nmap environment diagnostics and exit")
+    parser.add_argument("--self-test", metavar="REPORT", type=Path, help="run a headless self test and write a JSON report")
     args, _unknown = parser.parse_known_args(list(argv))
     return args
 
@@ -84,6 +85,10 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     args = _parse_args(sys.argv[1:] if argv is None else argv)
     if args.diagnose:
         return _diagnose()
+    if args.self_test:
+        from genmap.selftest import run_self_test
+
+        return run_self_test(args.self_test)
 
     from genmap.logging_setup import configure_logging
     from genmap.paths import default_paths

@@ -55,6 +55,11 @@ class Service(ResultModel):
     cpe: list[str] = Field(default_factory=list)
     extra: dict[str, str] = Field(default_factory=dict)
 
+    @property
+    def is_probed(self) -> bool:
+        """True when Nmap identified the service by probing rather than by port number."""
+        return self.method == "probed"
+
     def display_name(self) -> str:
         parts = [p for p in (self.product, self.version, self.extra_info) if p]
         if parts:
@@ -260,6 +265,17 @@ class ScanResult(ResultModel):
             for port in host.open_ports:
                 if port.service and port.service.name:
                     names.add(port.service.name)
+        return names
+
+    @property
+    def identified_services(self) -> set[str]:
+        """Service names Nmap confirmed by probing (-sV), not guessed from its port table."""
+        names: set[str] = set()
+        for host in self.hosts:
+            for port in host.open_ports:
+                service = port.service
+                if service and service.name and service.is_probed:
+                    names.add(service.name)
         return names
 
     def summary_line(self) -> str:

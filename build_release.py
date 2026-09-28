@@ -95,6 +95,8 @@ def pyinstaller(version: str, onefile: bool) -> Path:
         "--noconfirm",
         "--clean",
         "--windowed",
+        # UPX compressed executables are a common cause of antivirus false positives.
+        "--noupx",
         "--name",
         APP_NAME,
         "--icon",

@@ -26,6 +26,18 @@ from genmap.nmap.output_monitor import LiveScanState, OutputMonitor
 log = logging.getLogger(__name__)
 
 
+def _last_meaningful_line(lines: list[str]) -> Optional[str]:
+    """Last line that is an actual message, skipping Lua traceback noise and QUITTING!."""
+    for line in reversed(lines):
+        text = line.strip()
+        if not text or text == "QUITTING!" or line.startswith(("\t", " ")) or text.startswith(("stack traceback", "[C]")):
+            continue
+        if text.startswith("See the output of nmap -h"):
+            continue
+        return text
+    return None
+
+
 class ScanJob(QObject):
     """One running (or finished) Nmap process."""
 
@@ -215,10 +227,22 @@ class ScanJob(QObject):
             )
         elif exit_code != 0:
             hint = self.monitor.state.problems[0] if self.monitor.state.problems else None
-            error_line = next((l for l in reversed(self.stderr_lines) if l.strip()), None)
             message = hint.message if hint else f"Nmap exited with code {exit_code}."
-            remedy = hint.remedy if hint else (error_line if error_line else None)
+            if hint:
+                remedy = f"{hint.remedy} Nmap reported: {hint.source_line}"
+            else:
+                error_line = _last_meaningful_line(self.stderr_lines) or _last_meaningful_line(self.stdout_lines)
+                remedy = f"Nmap reported: {error_line}" if error_line else None
             self._finish(RunStatus.FAILED, exit_code=exit_code, error_message=message, error_remedy=remedy)
+        elif self.monitor.state.problems:
+            # Nmap can exit 0 after skipping work, for example when a name does not resolve.
+            first = self.monitor.state.problems[0]
+            self._finish(
+                RunStatus.COMPLETED_WITH_WARNINGS,
+                exit_code=exit_code,
+                error_message=first.message,
+                error_remedy=f"{first.remedy} Nmap reported: {first.source_line}",
+            )
         else:
             self._finish(RunStatus.COMPLETED, exit_code=exit_code)
 

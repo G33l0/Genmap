@@ -9,7 +9,7 @@ import shutil
 from pathlib import Path
 from typing import Optional
 
-from PyQt6.QtCore import QModelIndex, QSortFilterProxyModel, Qt, pyqtSignal
+from PyQt6.QtCore import QModelIndex, QSortFilterProxyModel, Qt, QTimer, pyqtSignal
 from PyQt6.QtWidgets import (
     QAbstractItemView,
     QCheckBox,
@@ -137,7 +137,7 @@ class ResultsPage(BasePage):
         metrics.setSpacing(12)
         self.metric_hosts = Metric("Hosts up")
         self.metric_open = Metric("Open ports")
-        self.metric_services = Metric("Distinct services")
+        self.metric_services = Metric("Identified services")
         self.metric_elapsed = Metric("Scan time")
         for metric in (self.metric_hosts, self.metric_open, self.metric_services, self.metric_elapsed):
             metrics.addWidget(metric)
@@ -219,7 +219,13 @@ class ResultsPage(BasePage):
         layout.addWidget(splitter, 1)
         self.tabs.addTab(tab, "Hosts")
 
-        for signal in (self.filter_text.textChanged, self.filter_field.currentIndexChanged, self.filter_state.currentIndexChanged, self.hide_down.toggled):
+        # Typing is debounced so large results do not refilter on every keystroke.
+        self._filter_timer = QTimer(self)
+        self._filter_timer.setSingleShot(True)
+        self._filter_timer.setInterval(200)
+        self._filter_timer.timeout.connect(self._apply_filter)
+        self.filter_text.textChanged.connect(self._filter_timer.start)
+        for signal in (self.filter_field.currentIndexChanged, self.filter_state.currentIndexChanged, self.hide_down.toggled):
             signal.connect(self._apply_filter)
 
     def _build_ports_tab(self) -> None:
@@ -325,7 +331,13 @@ class ResultsPage(BasePage):
         self.header.set_subtitle(f"Nmap {result.nmap_version or '?'}  •  {when}" + (f"  •  {record.status.label}" if record else "  •  imported file"))
         self.metric_hosts.set_value(f"{len(result.hosts_up)} / {len(result.hosts) or result.statistics.hosts_total}")
         self.metric_open.set_value(str(result.total_open_ports))
-        self.metric_services.set_value(str(len(result.distinct_services)))
+        identified = result.identified_services
+        guessed = result.distinct_services - identified
+        self.metric_services.set_value(str(len(identified)))
+        self.metric_services.setToolTip(
+            "Services Nmap confirmed with version detection."
+            + (f" {len(guessed)} more name(s) only come from Nmap's port table: {', '.join(sorted(guessed))}." if guessed else "")
+        )
         elapsed = result.statistics.elapsed_seconds
         if elapsed is None and record and record.duration_seconds is not None:
             elapsed = record.duration_seconds
@@ -370,7 +382,7 @@ class ResultsPage(BasePage):
         self._apply_filter()
         for column in range(4):
             self.tree.resizeColumnToContents(column)
-        if self.proxy.rowCount() <= 20:
+        if self.proxy.rowCount() <= 20 and self._visible_port_rows() <= 2000:
             self.tree.expandAll()
         first = self.proxy.index(0, 0)
         if first.isValid():
@@ -379,18 +391,22 @@ class ResultsPage(BasePage):
             self.details.setHtml("")
 
     def _apply_filter(self) -> None:
+        self._filter_timer.stop()
         self.proxy.set_filter(
             self.filter_text.text(),
             str(self.filter_field.current_value()),
             str(self.filter_state.current_value()),
             self.hide_down.isChecked(),
         )
-        if self.proxy.is_filtering():
+        if self.proxy.is_filtering() and self._visible_port_rows() <= 2000:
             self.tree.expandAll()
         shown = self.proxy.rowCount()
         total = self.tree_model.rowCount()
         hidden = total - shown
         self.filter_status.setText(f"Showing {shown} of {total} hosts" + (f" ({hidden} hidden by filters)" if hidden else "") + ".")
+
+    def _visible_port_rows(self) -> int:
+        return sum(self.proxy.rowCount(self.proxy.index(row, 0)) for row in range(self.proxy.rowCount()))
 
     def _on_tree_selection(self, current: QModelIndex, _previous: QModelIndex) -> None:
         if self.result is None or not current.isValid():

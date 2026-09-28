@@ -166,10 +166,15 @@ class ScanMonitorPage(BasePage):
 
     def attach(self, job: ScanJob) -> None:
         if self.job is not None:
-            for signal in (self.job.output, self.job.live_state_changed, self.job.progress_changed, self.job.finished, self.job.started):
+            for signal, slot in (
+                (self.job.output, self._on_output),
+                (self.job.live_state_changed, self._on_live_state),
+                (self.job.progress_changed, self._on_progress),
+                (self.job.finished, self._on_finished),
+            ):
                 try:
-                    signal.disconnect()
-                except TypeError:
+                    signal.disconnect(slot)
+                except (TypeError, RuntimeError):
                     pass
         self.job = job
         self._pending.clear()
@@ -188,6 +193,15 @@ class ScanMonitorPage(BasePage):
         self.info.set_value("Command", job.plan.display())
         for metric in (self.metric_hosts, self.metric_up, self.metric_ports, self.metric_services):
             metric.set_value("0")
+        config = record.scan_configuration()
+        if config.service_detection.enabled or config.aggressive:
+            self.metric_services.caption_label.setText("Services identified")
+            self.metric_services.setToolTip("Service names confirmed by Nmap's version detection.")
+        else:
+            self.metric_services.caption_label.setText("Service names (port table)")
+            self.metric_services.setToolTip(
+                "Version detection is off, so these names come from Nmap's port table and are not confirmed."
+            )
         self.progress.setRange(0, 0)
         self.progress.setFormat("")
         self.progress_text.setText("Nmap has not reported progress yet. Progress appears when Nmap prints timing estimates.")
@@ -282,8 +296,13 @@ class ScanMonitorPage(BasePage):
         if record.status in (RunStatus.COMPLETED, RunStatus.COMPLETED_WITH_WARNINGS):
             if summary is not None:
                 parts.append(f"{summary.hosts_up} of {summary.hosts_total} hosts up, {summary.open_ports} open ports.")
-            if record.warnings and record.status == RunStatus.COMPLETED_WITH_WARNINGS:
-                parts.append(record.warnings[-1])
+            if record.status == RunStatus.COMPLETED_WITH_WARNINGS:
+                if record.error_message:
+                    parts.append(record.error_message)
+                    if record.error_remedy:
+                        parts.append(record.error_remedy)
+                elif record.warnings:
+                    parts.append(record.warnings[-1])
             self.progress_text.setText(summary.nmap_summary if summary and summary.nmap_summary else "Scan finished.")
         else:
             if record.error_message:

@@ -28,41 +28,48 @@ _DONE = re.compile(r"^Nmap done: (?P<addresses>\d+) IP address(?:es)? \((?P<up>\
 _WARNING_PREFIXES = ("WARNING:", "Warning:", "QUITTING!", "Failed to", "Error", "ERROR:", "RTTVAR has grown")
 
 # Well known failure messages mapped to explanations a person can act on.
+# Specific failure messages Nmap prints, mapped to explanations a person can
+# act on. Patterns are anchored on Nmap's own wording so that script output or
+# banners that merely mention a word like "Npcap" are not mistaken for errors.
 _KNOWN_PROBLEMS: list[tuple[re.Pattern[str], str, str]] = [
     (
-        re.compile(r"requires root privileges|requires? (administrator|admin) privileges|You requested a scan type which requires", re.I),
+        re.compile(r"requires root privileges|requires? (?:administrator|admin) privileges|You requested a scan type which requires", re.I),
         "This scan type needs elevated privileges.",
         "Run Genmap as Administrator (or root) or switch to a TCP connect scan.",
     ),
     (
-        re.compile(r"dnet: Failed to open device|Failed to open device|No such device|pcap_open|WinPcap|Npcap", re.I),
+        re.compile(
+            r"^dnet: Failed to open device|^Failed to open device|pcap_open_live\(|"
+            r"Could not import all necessary Npcap functions|^Npcap is not installed|WinPcap is not installed",
+            re.I,
+        ),
         "Nmap could not open a network interface for raw packet access.",
         "Check that Npcap is installed and its service is running, and that the selected interface exists.",
     ),
     (
-        re.compile(r"Failed to resolve", re.I),
+        re.compile(r"^Failed to resolve \"", re.I),
         "One or more target names could not be resolved.",
         "Check the spelling of the hostname and your DNS settings.",
     ),
     (
-        re.compile(r"Illegal port|Your port specifications are illegal|Ports specified must be", re.I),
+        re.compile(r"^Your port specifications are illegal|Ports specified must be between|^Found no matches for the service mask|Illegal port", re.I),
         "Nmap rejected the port specification.",
         "Review the ports on the Ports tab.",
     ),
     (
-        re.compile(r"NSE: failed to initialize|SCRIPT ENGINE|'.*' did not match a category, filename, or directory", re.I),
+        re.compile(r"failed to initialize the script engine|' did not match a category, filename, or directory", re.I),
         "Nmap could not load one of the requested scripts.",
         "Check the script names and categories on the Scripts tab.",
     ),
     (
-        re.compile(r"Nmap requires a positive .*argument|Invalid argument to|unrecognized option|Unknown option", re.I),
+        re.compile(r": unrecognized option '|: option '?[-\w]+'? requires an argument|^Invalid argument to|requires a positive", re.I),
         "Nmap did not understand one of the arguments.",
         "Review the advanced arguments; the installed Nmap version may not support them.",
     ),
     (
         re.compile(r"Only ethernet devices can be used for raw scans", re.I),
         "The selected interface cannot be used for raw packet scans.",
-        "Choose an Ethernet interface, or use --unprivileged / a TCP connect scan.",
+        "Choose an Ethernet interface, or use --unprivileged or a TCP connect scan.",
     ),
 ]
 
@@ -174,8 +181,9 @@ class OutputMonitor:
 
         match = _PORT_TABLE.match(stripped)
         if match:
-            if match.group("state") == "open" and match.group("service") not in ("unknown", "?"):
-                service = match.group("service").rstrip("?")
+            service = match.group("service")
+            # Nmap marks uncertain names with "?"; those are not identifications.
+            if match.group("state") == "open" and service != "unknown" and not service.endswith("?"):
                 if service not in self.state.services:
                     self.state.services.add(service)
                     return "service"

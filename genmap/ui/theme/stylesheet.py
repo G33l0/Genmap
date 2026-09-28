@@ -2,15 +2,90 @@
 
 from __future__ import annotations
 
+from typing import Optional
+
+from genmap.ui.theme.assets import ThemeAssets
 from genmap.ui.theme.palettes import Palette
 
 
-def build_stylesheet(p: Palette, base_font_pt: int, mono_family: str) -> str:
+def _indicator_rules(p: Palette, a: Optional[ThemeAssets]) -> str:
+    """Checkbox, radio, combo, and spin box indicators drawn explicitly so they
+    stay visible on every palette, including near black ones."""
+    check = f"image: {a.check};" if a else ""
+    check_disabled = f"image: {a.check_disabled};" if a else ""
+    down = f"image: {a.arrow_down};" if a else ""
+    up = f"image: {a.arrow_up};" if a else ""
+    down_disabled = f"image: {a.arrow_down_disabled};" if a else ""
+    up_disabled = f"image: {a.arrow_up_disabled};" if a else ""
+    return f"""
+QCheckBox::indicator {{
+    width: 16px;
+    height: 16px;
+    border: 1px solid {p.text_muted};
+    border-radius: 3px;
+    background: {p.input_bg};
+}}
+QCheckBox::indicator:hover {{ border-color: {p.accent}; }}
+QCheckBox::indicator:checked {{
+    background: {p.accent};
+    border-color: {p.accent};
+    {check}
+}}
+QCheckBox::indicator:disabled {{ background: {p.surface_alt}; border-color: {p.border_strong}; }}
+QCheckBox::indicator:checked:disabled {{ background: {p.border}; {check_disabled} }}
+QRadioButton::indicator {{
+    width: 16px;
+    height: 16px;
+    border: 1px solid {p.text_muted};
+    border-radius: 9px;
+    background: {p.input_bg};
+}}
+QRadioButton::indicator:hover {{ border-color: {p.accent}; }}
+QRadioButton::indicator:checked {{
+    border-color: {p.accent};
+    background: qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
+        stop:0 {p.accent}, stop:0.48 {p.accent}, stop:0.58 {p.input_bg}, stop:1 {p.input_bg});
+}}
+QRadioButton::indicator:disabled {{ background: {p.surface_alt}; border-color: {p.border_strong}; }}
+QRadioButton::indicator:checked:disabled {{
+    background: qradialgradient(cx:0.5, cy:0.5, radius:0.5, fx:0.5, fy:0.5,
+        stop:0 {p.text_muted}, stop:0.48 {p.text_muted}, stop:0.58 {p.surface_alt}, stop:1 {p.surface_alt});
+}}
+QComboBox::drop-down {{
+    subcontrol-origin: padding;
+    subcontrol-position: center right;
+    border: none;
+    width: 22px;
+}}
+QComboBox {{ padding-right: 26px; }}
+QSpinBox, QDoubleSpinBox {{ padding-right: 22px; }}
+QComboBox::down-arrow {{ width: 12px; height: 12px; {down} }}
+QComboBox::down-arrow:disabled {{ {down_disabled} }}
+QComboBox::down-arrow:on {{ top: 1px; }}
+QSpinBox::up-button, QSpinBox::down-button, QDoubleSpinBox::up-button, QDoubleSpinBox::down-button {{
+    subcontrol-origin: border;
+    width: 18px;
+    border: none;
+    background: transparent;
+}}
+QSpinBox::up-button, QDoubleSpinBox::up-button {{ subcontrol-position: top right; }}
+QSpinBox::down-button, QDoubleSpinBox::down-button {{ subcontrol-position: bottom right; }}
+QSpinBox::up-button:hover, QSpinBox::down-button:hover,
+QDoubleSpinBox::up-button:hover, QDoubleSpinBox::down-button:hover {{ background: {p.surface_alt}; }}
+QSpinBox::up-arrow, QDoubleSpinBox::up-arrow {{ width: 10px; height: 10px; {up} }}
+QSpinBox::down-arrow, QDoubleSpinBox::down-arrow {{ width: 10px; height: 10px; {down} }}
+QSpinBox::up-arrow:disabled, QSpinBox::up-arrow:off {{ {up_disabled} }}
+QSpinBox::down-arrow:disabled, QSpinBox::down-arrow:off {{ {down_disabled} }}
+"""
+
+
+def build_stylesheet(p: Palette, base_font_pt: int, mono_family: str, assets: Optional[ThemeAssets] = None) -> str:
     small = max(base_font_pt - 1, 7)
+    family = f"\n    font-family: {p.ui_font_family};" if p.ui_font_family else ""
     return f"""
 QWidget {{
     color: {p.text};
-    font-size: {base_font_pt}pt;
+    font-size: {base_font_pt}pt;{family}
 }}
 QMainWindow, QDialog, QStackedWidget > QWidget {{
     background: {p.window};
@@ -155,10 +230,6 @@ QPlainTextEdit[role="console"] {{
 QPlainTextEdit[role="mono"], QLineEdit[role="mono"], QTextEdit[role="mono"] {{
     font-family: {mono_family};
 }}
-QComboBox::drop-down {{
-    border: none;
-    width: 22px;
-}}
 QComboBox QAbstractItemView {{
     background: {p.surface};
     border: 1px solid {p.border_strong};
@@ -166,19 +237,10 @@ QComboBox QAbstractItemView {{
     selection-color: {p.selection_text};
     outline: none;
 }}
-QSpinBox::up-button, QSpinBox::down-button {{
-    width: 16px;
-    border: none;
-    background: transparent;
-}}
 
 QCheckBox, QRadioButton {{
     spacing: 8px;
     padding: 2px 0;
-}}
-QCheckBox::indicator, QRadioButton::indicator {{
-    width: 16px;
-    height: 16px;
 }}
 QGroupBox {{
     border: 1px solid {p.border};
@@ -368,4 +430,4 @@ QLabel[badge="true"] {{
     font-size: {small}pt;
     color: {p.text_muted};
 }}
-"""
+""" + _indicator_rules(p, assets)

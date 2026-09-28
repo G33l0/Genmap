@@ -37,3 +37,18 @@ def test_normalized_result_serializes(fixtures):
 def test_open_ports_only_counts_open():
     host = Host(ports=[Port(protocol="tcp", port_id=1, state="open"), Port(protocol="udp", port_id=2, state="open|filtered")])
     assert [p.port_id for p in host.open_ports] == [1]
+
+
+def test_port_table_guesses_are_not_identified_services():
+    from genmap.core.results import ScanResult
+
+    result = ScanResult(hosts=[Host(
+        status=HostStatus(state="up"),
+        ports=[
+            Port(protocol="tcp", port_id=22, state="open", service=Service(name="ssh", method="probed", confidence=10)),
+            Port(protocol="tcp", port_id=8080, state="open", service=Service(name="http-proxy", method="table", confidence=3)),
+        ],
+    )])
+    assert result.distinct_services == {"ssh", "http-proxy"}
+    assert result.identified_services == {"ssh"}
+    assert summarize_result(result).services == 1

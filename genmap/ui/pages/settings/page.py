@@ -36,6 +36,7 @@ from genmap.nmap.environment import NmapEnvironment
 from genmap.settings import AppSettings
 from genmap.ui.app_context import AppContext
 from genmap.ui.pages.base import BasePage
+from genmap.ui.theme.palettes import THEME_CHOICES
 from genmap.ui.widgets.common import Card, KeyValueGrid, PageHeader, form_layout, hint, label
 from genmap.ui.widgets.diagnostics_view import DiagnosticsView
 from genmap.ui.widgets.error_dialog import show_error
@@ -222,6 +223,11 @@ class SettingsPage(BasePage):
             self.context.refresh_environment()
         return True
 
+    def sync_theme(self, key: str) -> None:
+        """Reflect a theme chosen elsewhere without discarding other unsaved edits."""
+        self._working.appearance.theme = key
+        self.theme_combo.set_current_value(key)
+
     def has_unsaved_changes(self) -> bool:
         return self._dirty
 
@@ -308,7 +314,9 @@ class SettingsPage(BasePage):
         section = _Section("Appearance")
         card = section.card("Theme")
         form = form_layout()
-        theme = EnumCombo([("Follow Windows setting", "system"), ("Light", "light"), ("Dark", "dark")])
+        theme = EnumCombo([(caption, key) for key, caption in THEME_CHOICES])
+        theme.setToolTip("Hacker is a black and green terminal style theme with a monospace interface font.")
+        self.theme_combo = theme
         form.addRow("Theme", theme)
         self._bind_combo(section, theme, "appearance", "theme")
         size = QSpinBox()
@@ -393,10 +401,6 @@ class SettingsPage(BasePage):
         self.routes.horizontalHeader().setStretchLastSection(True)
         self.routes.setMinimumHeight(160)
         card.add_widget(self.routes)
-        card = section.card("Preferences")
-        box = QCheckBox("Warn when the packet capture driver is missing")
-        card.add_widget(box)
-        self._bind_check(section, box, "network", "warn_when_capture_driver_missing")
         return section
 
     def _scanning(self) -> _Section:
@@ -438,10 +442,11 @@ class SettingsPage(BasePage):
 
     def _nse(self) -> _Section:
         section = _Section("NSE")
-        card = section.card("Safety")
-        warn = QCheckBox("Highlight intrusive categories before a scan starts")
-        card.add_widget(warn)
-        self._bind_check(section, warn, "nse", "warn_on_intrusive_categories")
+        card = section.card("Intrusive script warnings")
+        card.add_widget(hint(
+            "Before a scan starts, Genmap resolves the script selection against the installed script database "
+            "and lists every selected script that Nmap files under one of these categories. The warning cannot be turned off."
+        ))
         form = form_layout()
         categories = TextField("Comma separated")
         form.addRow("Intrusive categories", categories)
@@ -543,10 +548,6 @@ class SettingsPage(BasePage):
         self._bind_spin(section, limit, "scanning", "max_concurrent_scans")
         card.add_layout(form)
         card.add_widget(hint("Parallel scans compete for bandwidth and can distort each other's timing. One at a time is the safe default."))
-        card = section.card("Developer")
-        dev = QCheckBox("Developer mode: show extra diagnostic information")
-        card.add_widget(dev)
-        self._bind_check(section, dev, "advanced", "developer_mode")
         return section
 
     # Environment -------------------------------------------------------------

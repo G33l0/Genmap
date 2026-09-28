@@ -8,8 +8,9 @@ starts, particularly when NSE categories that attack services are selected.
 from __future__ import annotations
 
 from dataclasses import dataclass
-from typing import Iterable
+from typing import Iterable, Optional
 
+from genmap.core.nse import ScriptCatalog, ScriptExpressionError, select_scripts
 from genmap.core.scan_config import ScanConfiguration, ScanMode, TcpScanTechnique
 from genmap.core.targets import estimate_host_count, parse_targets
 
@@ -24,49 +25,112 @@ class IntrusivenessNotice:
 
 
 def _script_terms(expressions: Iterable[str]) -> set[str]:
+    """Positive terms of script expressions; terms directly negated by "not" are skipped."""
     terms: set[str] = set()
     for expression in expressions:
-        for token in expression.replace("(", " ").replace(")", " ").replace(",", " ").split():
+        tokens = expression.replace("(", " ( ").replace(")", " ) ").replace(",", " ").split()
+        negate = False
+        for token in tokens:
             lowered = token.lower()
-            if lowered in ("and", "or", "not"):
+            if lowered == "not":
+                negate = True
                 continue
-            terms.add(lowered)
+            if lowered in ("and", "or", "(", ")"):
+                if lowered != "(":
+                    negate = False
+                continue
+            if not negate:
+                terms.add(lowered)
+            negate = False
     return terms
+
+
+def _catalog_notices(config: ScanConfiguration, categories: set[str], catalog: ScriptCatalog) -> list[IntrusivenessNotice]:
+    expressions = list(config.scripts.scripts)
+    if config.aggressive and "default" not in expressions:
+        expressions.append("default")
+    if not expressions:
+        return []
+    try:
+        selection = select_scripts(expressions, catalog)
+    except ScriptExpressionError as exc:
+        return [IntrusivenessNotice("medium", f"The script selection could not be checked: {exc}.")]
+    notices: list[IntrusivenessNotice] = []
+    risky = selection.intrusive(categories)
+    if risky:
+        names = ", ".join(s.name for s in risky[:6]) + (f" and {len(risky) - 6} more" if len(risky) > 6 else "")
+        found = sorted({c for s in risky for c in s.categories if c in categories})
+        notices.append(
+            IntrusivenessNotice(
+                "high",
+                f"{len(risky)} of the {len(selection.scripts)} selected scripts are in Nmap's "
+                f"{', '.join(found)} categories: {names}.",
+            )
+        )
+    if selection.unresolved:
+        notices.append(
+            IntrusivenessNotice(
+                "medium",
+                "Not in the installed script database, so Genmap cannot check what they do: "
+                + ", ".join(selection.unresolved[:6])
+                + ".",
+            )
+        )
+    return notices
 
 
 def assess_intrusiveness(
     config: ScanConfiguration,
     intrusive_categories: Iterable[str] = DEFAULT_INTRUSIVE_CATEGORIES,
+    catalog: Optional[ScriptCatalog] = None,
 ) -> list[IntrusivenessNotice]:
+    """List the parts of a configuration that deserve a second look.
+
+    With the installed script catalog the NSE check is exact: the selection
+    is resolved the way Nmap resolves it and only scripts Nmap itself files
+    under an intrusive category are reported. Without a catalog Genmap falls
+    back to reading the expressions.
+    """
     notices: list[IntrusivenessNotice] = []
     categories = {c.lower() for c in intrusive_categories}
 
-    terms = _script_terms(config.scripts.scripts)
-    hit_categories = sorted(t for t in terms if t in categories)
-    if hit_categories:
-        notices.append(
-            IntrusivenessNotice(
-                "high",
-                "NSE categories selected that can crash, brute force, or exploit services: "
-                + ", ".join(hit_categories)
-                + ".",
+    if catalog is not None and getattr(catalog, "scripts", None):
+        notices.extend(_catalog_notices(config, categories, catalog))
+    else:
+        terms = _script_terms(config.scripts.scripts)
+        hit_categories = sorted(t for t in terms if t in categories)
+        if hit_categories:
+            notices.append(
+                IntrusivenessNotice(
+                    "high",
+                    "NSE categories selected that can crash, brute force, or exploit services: "
+                    + ", ".join(hit_categories)
+                    + ".",
+                )
             )
-        )
-    wildcard_terms = sorted(t for t in terms if t in ("all", "*") or t.endswith("*"))
-    if wildcard_terms:
-        notices.append(
-            IntrusivenessNotice(
-                "high",
-                "Script wildcards (" + ", ".join(wildcard_terms) + ") may include intrusive scripts.",
+        wildcard_terms = sorted(t for t in terms if t in ("all", "*") or t.endswith("*"))
+        if wildcard_terms:
+            notices.append(
+                IntrusivenessNotice(
+                    "high",
+                    "Script wildcards (" + ", ".join(wildcard_terms) + ") may include intrusive scripts; "
+                    "the installed script list was not available to check.",
+                )
             )
+        risky_names = sorted(
+            t for t in terms if t.startswith(("brute", "dos", "exploit", "fuzzer")) or "-brute" in t or "-dos" in t
         )
-    risky_names = sorted(
-        t for t in terms if any(t.startswith(prefix) for prefix in ("brute", "dos", "exploit", "fuzzer")) or "-brute" in t or "-dos" in t
-    )
-    if risky_names and not hit_categories:
-        notices.append(
-            IntrusivenessNotice("high", "Scripts selected by name look intrusive: " + ", ".join(risky_names) + ".")
-        )
+        if risky_names:
+            notices.append(
+                IntrusivenessNotice("high", "Scripts selected by name look intrusive: " + ", ".join(risky_names) + ".")
+            )
+        if any("not" == t.lower() for e in config.scripts.scripts for t in e.split()):
+            notices.append(
+                IntrusivenessNotice(
+                    "medium",
+                    "The selection uses \"not\"; without the installed script list Genmap cannot tell what remains selected.",
+                )
+            )
 
     if config.aggressive:
         notices.append(

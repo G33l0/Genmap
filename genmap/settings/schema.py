@@ -29,7 +29,7 @@ class GeneralSettings(SettingsSection):
 
 
 class AppearanceSettings(SettingsSection):
-    theme: Literal["system", "light", "dark"] = "system"
+    theme: Literal["system", "light", "dark", "hacker"] = "system"
     base_font_size: int = Field(default=10, ge=8, le=16)
     monospace_font_family: str = "Consolas, Cascadia Mono, Menlo, DejaVu Sans Mono, monospace"
     sidebar_compact: bool = False

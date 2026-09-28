@@ -165,13 +165,20 @@ class ResultTreeModel(QStandardItemModel):
                 children = [
                     _item(port.label, sort=(0 if port.protocol == "tcp" else 1, port.port_id)),
                     _item(port.state, sort=port.state, tooltip=f"Reason: {port.reason}" if port.reason else None),
-                    _item(name, sort=name),
+                    _item(
+                        name,
+                        sort=name,
+                        tooltip=None if (service is None or service.is_probed or not name)
+                        else "From Nmap's port table (nmap-services); not confirmed by version detection.",
+                    ),
                     _item(product, sort=product, tooltip=product or None),
                     _item(detail, tooltip=detail or None),
                 ]
                 state_color = self._color(port.state.split("|")[0])
                 if state_color:
                     children[1].setForeground(state_color)
+                if service is not None and name and not service.is_probed and self._palette_lookup is not None:
+                    children[2].setForeground(QColor(self._palette_lookup().text_muted))
                 for item in children:
                     item.setData("port", ROLE_KIND)
                     item.setData(host_index, ROLE_HOST_INDEX)

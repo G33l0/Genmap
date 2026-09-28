@@ -37,10 +37,12 @@ def test_intrusive_categories_are_flagged():
     assert "brute" in notices[0].message
 
 
-def test_negated_categories_still_flagged_for_review():
+def test_negated_category_is_not_reported_as_selected_without_catalog():
     config = base()
     config.scripts.scripts = ["not intrusive"]
-    assert is_high_risk(assess_intrusiveness(config))
+    notices = assess_intrusiveness(config)
+    assert not is_high_risk(notices)
+    assert any("not" in n.message for n in notices)
 
 
 def test_wildcards_and_script_names():

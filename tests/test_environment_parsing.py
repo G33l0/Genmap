@@ -1,4 +1,3 @@
-from pathlib import Path
 
 from genmap.nmap.capabilities import detect_capabilities
 from genmap.nmap.interfaces import parse_iflist_output

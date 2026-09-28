@@ -24,6 +24,8 @@ Before a scan starts, Genmap lists anything that deserves a second look:
 * Decoys, spoofed addresses or MAC addresses, bad checksums, fragmentation, and idle or FTP bounce scans.
 * Aggressive timing, very high packet rates, large address ranges, and random Internet targets (`-iR`).
 
+For NSE, Genmap evaluates the selection exactly as Nmap does, against the installed `script.db`: categories, names, wildcards, and `and`, `or`, `not` with parentheses. The warning lists the scripts that will actually run and belong to an intrusive category. A selection such as `default` produces no warning, `ssl-*` names only `ssl-enum-ciphers`, and `not intrusive` still reports the `brute` scripts it keeps. Files and names missing from the database are reported as unverifiable. When the database is unavailable Genmap falls back to reading the expressions and says so.
+
 High risk items require ticking an authorization box before the Start button is enabled. The category labels come from Nmap's classification. Genmap does not describe any script as safe beyond what Nmap says.
 
 ## Parsing
@@ -33,6 +35,12 @@ High risk items require ticking an authorization box before the Start button is 
 * Unknown elements are stored as data. They are never evaluated.
 * NSE script contents are never read or executed by Genmap. Script names come from Nmap's `script.db`, which is parsed as text. Nmap alone runs scripts.
 * Result details are HTML escaped before display, so hostile banners or script output cannot inject markup into the UI.
+
+## Reporting only what Nmap reported
+
+* Failure messages are matched against Nmap's exact wording, so script output or banners that merely mention words like Npcap are not treated as errors. Every explanation quotes the Nmap line it came from.
+* A scan that exits cleanly but hit a recognised problem, such as a name that did not resolve, finishes as *Completed with warnings* instead of *Completed*.
+* Service names count as identified only when version detection confirmed them.
 
 ## Local data
 

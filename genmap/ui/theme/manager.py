@@ -2,20 +2,28 @@
 
 from __future__ import annotations
 
+import logging
+import tempfile
+from pathlib import Path
+
 from PyQt6.QtCore import QObject, Qt, pyqtSignal
 from PyQt6.QtGui import QColor, QFont, QPalette
 from PyQt6.QtWidgets import QApplication
 
-from genmap.ui.theme.palettes import DARK, LIGHT, Palette
+from genmap.ui.theme.palettes import DARK, LIGHT, PALETTES, Palette
+from genmap.ui.theme.assets import ThemeAssets, write_theme_assets
 from genmap.ui.theme.stylesheet import build_stylesheet
+
+log = logging.getLogger(__name__)
 
 
 class ThemeManager(QObject):
     theme_changed = pyqtSignal(object)  # Palette
 
-    def __init__(self, app: QApplication, parent: QObject | None = None) -> None:
+    def __init__(self, app: QApplication, parent: QObject | None = None, asset_dir: Path | None = None) -> None:
         super().__init__(parent)
         self._app = app
+        self._asset_dir = asset_dir or Path(tempfile.gettempdir()) / "genmap-theme"
         self.palette: Palette = LIGHT
         self.theme_name = "system"
         self.base_font_pt = 10
@@ -32,10 +40,8 @@ class ThemeManager(QObject):
         return scheme() == Qt.ColorScheme.Dark
 
     def resolve(self, theme_name: str) -> Palette:
-        if theme_name == "dark":
-            return DARK
-        if theme_name == "light":
-            return LIGHT
+        if theme_name in PALETTES:
+            return PALETTES[theme_name]
         return DARK if self._system_prefers_dark() else LIGHT
 
     def apply(self, theme_name: str, *, base_font_pt: int | None = None, mono_family: str | None = None) -> None:
@@ -49,7 +55,14 @@ class ThemeManager(QObject):
         font = QFont(self._app.font())
         font.setPointSize(self.base_font_pt)
         self._app.setFont(font)
-        self._app.setStyleSheet(build_stylesheet(self.palette, self.base_font_pt, self.mono_family))
+        assets: ThemeAssets | None
+        try:
+            assets = write_theme_assets(self.palette, self._asset_dir)
+        except OSError as exc:
+            # Without the images indicators fall back to plain filled shapes.
+            log.warning("Theme images could not be written to %s: %s", self._asset_dir, exc)
+            assets = None
+        self._app.setStyleSheet(build_stylesheet(self.palette, self.base_font_pt, self.mono_family, assets))
         self.theme_changed.emit(self.palette)
 
     def _on_system_scheme_changed(self, *_args) -> None:
