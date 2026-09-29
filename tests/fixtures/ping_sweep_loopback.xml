@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<?xml-stylesheet href="file:///usr/bin/../share/nmap/nmap.xsl" type="text/xsl"?>
+<!-- Nmap 7.94SVN scan initiated Mon Sep 28 19:36:26 2026 as: nmap -sn -oX ping_sweep_loopback.xml 127.0.0.0/30 -->
+<nmaprun scanner="nmap" args="nmap -sn -oX ping_sweep_loopback.xml 127.0.0.0/30" start="1790624186" startstr="Mon Sep 28 19:36:26 2026" version="7.94SVN" xmloutputversion="1.05">
+<verbose level="0"/>
+<debugging level="0"/>
+<host><status state="up" reason="localhost-response" reason_ttl="0"/>
+<address addr="127.0.0.0" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+</host>
+<host><status state="up" reason="localhost-response" reason_ttl="0"/>
+<address addr="127.0.0.1" addrtype="ipv4"/>
+<hostnames>
+<hostname name="localhost" type="PTR"/>
+</hostnames>
+</host>
+<host><status state="up" reason="localhost-response" reason_ttl="0"/>
+<address addr="127.0.0.2" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+</host>
+<host><status state="up" reason="localhost-response" reason_ttl="0"/>
+<address addr="127.0.0.3" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+</host>
+<runstats><finished time="1790624186" timestr="Mon Sep 28 19:36:26 2026" summary="Nmap done at Mon Sep 28 19:36:26 2026; 4 IP addresses (4 hosts up) scanned in 0.00 seconds" elapsed="0.00" exit="success"/><hosts up="4" down="0" total="4"/>
+</runstats>
+</nmaprun>

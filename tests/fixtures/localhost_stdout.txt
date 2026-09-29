@@ -1,0 +1,66 @@
+Starting Nmap 7.94SVN ( https://nmap.org ) at 2026-09-28 18:32 UTC
+NSE: Loaded 156 scripts for scanning.
+NSE: Script Pre-scanning.
+Initiating NSE at 18:32
+Completed NSE at 18:32, 0.00s elapsed
+Initiating NSE at 18:32
+Completed NSE at 18:32, 0.00s elapsed
+Initiating NSE at 18:32
+Completed NSE at 18:32, 0.00s elapsed
+Initiating SYN Stealth Scan at 18:32
+Scanning localhost (127.0.0.1) [101 ports]
+Discovered open port 8765/tcp on 127.0.0.1
+Completed SYN Stealth Scan at 18:32, 0.01s elapsed (101 total ports)
+Initiating Service scan at 18:32
+Scanning 1 service on localhost (127.0.0.1)
+Completed Service scan at 18:32, 6.02s elapsed (1 service on 1 host)
+Initiating OS detection (try #1) against localhost (127.0.0.1)
+Retrying OS detection (try #2) against localhost (127.0.0.1)
+Retrying OS detection (try #3) against localhost (127.0.0.1)
+Retrying OS detection (try #4) against localhost (127.0.0.1)
+Retrying OS detection (try #5) against localhost (127.0.0.1)
+NSE: Script scanning 127.0.0.1.
+Initiating NSE at 18:32
+Completed NSE at 18:32, 0.10s elapsed
+Initiating NSE at 18:32
+Completed NSE at 18:32, 0.01s elapsed
+Initiating NSE at 18:32
+Completed NSE at 18:32, 0.00s elapsed
+Nmap scan report for localhost (127.0.0.1)
+Host is up (0.000059s latency).
+Not shown: 100 closed tcp ports (reset)
+PORT     STATE SERVICE VERSION
+8765/tcp open  http    SimpleHTTPServer 0.6 (Python 3.11.15)
+|_http-server-header: SimpleHTTP/0.6 Python/3.11.15
+| http-methods: 
+|_  Supported Methods: GET HEAD
+|_http-title: Directory listing for /
+No exact OS matches for host (If you know what OS is running on it, see https://nmap.org/submit/ ).
+TCP/IP fingerprint:
+OS:SCAN(V=7.94SVN%E=4%D=9/28%OT=8765%CT=1%CU=42518%PV=N%DS=0%DC=L%G=Y%TM=6A
+OS:BAB2D2%P=x86_64-pc-linux-gnu)SEQ(SP=108%GCD=1%ISR=107%TI=Z%CI=Z%II=I%TS=
+OS:21)OPS(O1=MFFD7ST11NWA%O2=MFFD7ST11NWA%O3=MFFD7NNT11NWA%O4=MFFD7ST11NWA%
+OS:O5=MFFD7ST11NWA%O6=MFFD7ST11)WIN(W1=FFCB%W2=FFCB%W3=FFCB%W4=FFCB%W5=FFCB
+OS:%W6=FFCB)ECN(R=Y%DF=Y%T=40%W=FFD7%O=MFFD7NNSNWA%CC=Y%Q=)T1(R=Y%DF=Y%T=40
+OS:%S=O%A=S+%F=AS%RD=0%Q=)T2(R=N)T3(R=N)T4(R=Y%DF=Y%T=40%W=0%S=A%A=Z%F=R%O=
+OS:%RD=0%Q=)T5(R=Y%DF=Y%T=40%W=0%S=Z%A=S+%F=AR%O=%RD=0%Q=)T6(R=Y%DF=Y%T=40%
+OS:W=0%S=A%A=Z%F=R%O=%RD=0%Q=)T7(R=Y%DF=Y%T=40%W=0%S=Z%A=S+%F=AR%O=%RD=0%Q=
+OS:)U1(R=Y%DF=N%T=40%IPL=164%UN=0%RIPL=G%RID=G%RIPCK=G%RUCK=G%RUD=G)IE(R=Y%
+OS:DFI=N%T=40%CD=S)
+
+Uptime guess: 0.000 days (since Mon Sep 28 18:32:49 2026)
+Network Distance: 0 hops
+TCP Sequence Prediction: Difficulty=264 (Good luck!)
+IP ID Sequence Generation: All zeros
+
+NSE: Script Post-scanning.
+Initiating NSE at 18:32
+Completed NSE at 18:32, 0.00s elapsed
+Initiating NSE at 18:32
+Completed NSE at 18:32, 0.00s elapsed
+Initiating NSE at 18:32
+Completed NSE at 18:32, 0.00s elapsed
+Read data files from: /usr/bin/../share/nmap
+OS and Service detection performed. Please report any incorrect results at https://nmap.org/submit/ .
+Nmap done: 1 IP address (1 host up) scanned in 17.77 seconds
+           Raw packets sent: 211 (13.334KB) | Rcvd: 413 (23.428KB)

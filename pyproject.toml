@@ -1,0 +1,61 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "genmap"
+version = "0.1.0"
+description = "A modern PyQt6 desktop frontend and orchestration platform for Nmap"
+readme = "README.md"
+requires-python = ">=3.13"
+authors = [{ name = "Genmap contributors" }]
+keywords = ["nmap", "network", "security", "pyqt6", "scanner"]
+classifiers = [
+    "Development Status :: 3 - Alpha",
+    "Environment :: Win32 (MS Windows)",
+    "Environment :: X11 Applications :: Qt",
+    "Intended Audience :: Information Technology",
+    "Intended Audience :: System Administrators",
+    "Operating System :: Microsoft :: Windows",
+    "Operating System :: POSIX",
+    "Programming Language :: Python :: 3.13",
+    "Topic :: Security",
+    "Topic :: System :: Networking :: Monitoring",
+]
+dependencies = [
+    "PyQt6>=6.7",
+    "pydantic>=2.7",
+    "defusedxml>=0.7",
+]
+
+[project.optional-dependencies]
+dev = [
+    "pytest>=8",
+    "pytest-qt>=4.4",
+]
+build = [
+    "pyinstaller>=6.6",
+]
+
+[project.scripts]
+genmap = "genmap.app:main"
+
+[project.gui-scripts]
+genmap-gui = "genmap.app:main"
+
+[tool.setuptools.packages.find]
+include = ["genmap*"]
+
+[tool.setuptools.package-data]
+genmap = ["resources/**/*"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+qt_api = "pyqt6"
+addopts = "-ra"
+filterwarnings = [
+    "error::DeprecationWarning:genmap.*",
+]
+markers = [
+    "integration: tests that execute the installed Nmap binary (skipped when Nmap is unavailable)",
+]

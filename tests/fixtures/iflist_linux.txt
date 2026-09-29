@@ -1,0 +1,13 @@
+Starting Nmap 7.94SVN ( https://nmap.org ) at 2026-09-28 19:36 UTC
+************************INTERFACES************************
+DEV  (SHORT) IP/MASK      TYPE     UP   MTU   MAC
+lo   (lo)    127.0.0.1/8  loopback up   65536
+ifb0 (ifb0)  (none)/0     other    down 1500
+ifb1 (ifb1)  (none)/0     other    down 1500
+eth0 (eth0)  192.0.2.2/24 ethernet up   1400  02:FC:00:00:00:01
+
+**************************ROUTES**************************
+DST/MASK     DEV  METRIC GATEWAY
+192.0.2.0/24 eth0 0
+0.0.0.0/0    eth0 0      192.0.2.1
+
