@@ -338,6 +338,12 @@ class ScanIndex:
         with self.db.session() as session:
             return list(session.scalars(select(Tag.name).order_by(Tag.name)))
 
+    def routed_scan_ids(self) -> set[str]:
+        """Run ids of scans whose indexed results include traceroute hops."""
+        query = select(Scan.run_id).join(Host, Host.scan_id == Scan.id).join(TracerouteHop, TracerouteHop.host_id == Host.id).distinct()
+        with self.db.session() as session:
+            return set(session.scalars(query))
+
     def recent_targets(self, limit: int = 30) -> list[tuple[str, datetime, int]]:
         """Target expressions used in scans, most recent first, with use counts."""
         query = (

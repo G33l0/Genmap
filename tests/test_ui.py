@@ -51,7 +51,7 @@ def window(qapp, context):
 
 
 def test_main_window_pages_and_navigation(window):
-    for key in ("dashboard", "new_scan", "scan_monitor", "results", "history", "modules", "settings"):
+    for key in ("dashboard", "new_scan", "scan_monitor", "results", "history", "compare", "topology", "modules", "settings"):
         window.show_page(key)
         assert window.stack.currentWidget() is window.pages[key]
     assert window.windowTitle().startswith("Genmap | ")
@@ -631,3 +631,57 @@ def test_compare_details_escape_scanned_content(window, context):
     change = Change(ChangeKind.SCRIPT_CHANGED, "10.0.0.1", "http-title on 80/tcp", "<b>old</b>", "<script>x</script>", "reading")
     rendered = page.change_html(change)
     assert "<script>x" not in rendered and "&lt;script&gt;" in rendered
+
+
+def test_topology_page_draws_selects_and_exports(window, context, fixtures, qtbot, tmp_path):
+    routed = _stored_scan(context, fixtures, "routed_scan.xml", ["203.0.113.10", "203.0.113.20", "203.0.113.30", "203.0.113.40"])
+    context.scan_index.reconcile(context.run_store)
+    assert context.scan_index.routed_scan_ids() == {routed.run_id}
+    window.open_topology_for(routed.run_id)
+    page = window.topology_page
+    assert window.stack.currentWidget() is page
+    qtbot.waitUntil(lambda: bool(page._node_items), timeout=10000)
+    assert page.checked_run_ids() == [routed.run_id]
+    assert "ip:203.0.113.10" in page._node_items and "ip:203.0.113.40" not in page._node_items
+    assert page.select_node("ip:198.51.100.1")
+    text = page.details.toPlainText()
+    assert "edge1.transit.test" in text and "Traceroute hops recorded by Nmap" in text
+    highlighted = [e for e in page._edge_items if e.pen().widthF() > 2]
+    assert highlighted and all("ip:198.51.100.1" in (e.edge.source, e.edge.target) for e in highlighted)
+
+    from defusedxml import ElementTree
+
+    png = page.export_to("png", tmp_path / "map.png")
+    svg = page.export_to("svg", tmp_path / "map.svg")
+    data = page.export_to("json", tmp_path / "map.json")
+    assert png.read_bytes()[:8] == b"\x89PNG\r\n\x1a\n"
+    assert ElementTree.parse(str(svg)).getroot().tag.endswith("svg")
+    assert '"no_reply"' in data.read_text(encoding="utf-8")
+    assert not list(tmp_path.glob(".genmap-map-*"))
+    # Export must not drop the selection the user had.
+    assert page._node_items["ip:198.51.100.1"].isSelected()
+
+    page.show_names.setChecked(False)
+    assert "edge1" not in page._node_items["ip:198.51.100.1"].caption.text()
+
+
+def test_topology_page_empty_and_hostile_names(window, context, qtbot, tmp_path):
+    from genmap.core.results import Address, Host, HostStatus, Hostname, ScanResult, Traceroute, TracerouteHop
+    from genmap.topology import TopologySource, build_topology, layered_layout
+
+    window.show_page("topology")
+    page = window.topology_page
+    assert not page.export_png_button.isEnabled()
+    hostile = "<script>alert(1)</script>"
+    host = Host(status=HostStatus(state="up"), addresses=[Address(address="198.51.100.2")],
+                hostnames=[Hostname(name=hostile, hostname_type="PTR")],
+                traceroute=Traceroute(hops=[TracerouteHop(ttl=1, ip_address="198.51.100.2", hostname=hostile)]))
+    page._graph = build_topology([TopologySource(ScanResult(hosts=[host]), "t & <b>")])
+    page._positions = layered_layout(page._graph)
+    page._draw()
+    node = page._graph.nodes["ip:198.51.100.2"]
+    assert "<script>" not in page.node_html(node) and "&lt;script&gt;" in page.node_html(node)
+    from defusedxml import ElementTree
+
+    svg = page.export_to("svg", tmp_path / "hostile.svg")
+    ElementTree.parse(str(svg))  # well formed despite the markup in names

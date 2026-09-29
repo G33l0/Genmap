@@ -43,6 +43,7 @@ from genmap.ui.pages.targets import TargetsPage
 from genmap.ui.pages.results import ResultsPage
 from genmap.ui.pages.scan_monitor import ScanMonitorPage
 from genmap.ui.pages.settings import SettingsPage
+from genmap.ui.pages.topology import TopologyPage
 from genmap.ui.theme.palettes import THEME_CHOICES
 from genmap.ui.widgets.common import label, set_status
 from genmap.ui.widgets.sidebar import NavEntry, Sidebar
@@ -61,7 +62,7 @@ NAV_ENTRIES = [
     NavEntry("targets", "Targets", "Saved target groups and recently scanned targets"),
     NavEntry("profiles", "Profiles", "Reusable scan configurations"),
     NavEntry("nse", "NSE Scripts", "Browse the scripts installed with Nmap"),
-    NavEntry("topology", "Topology", "Traceroute based map: planned for a later phase", enabled=False),
+    NavEntry("topology", "Topology", "Network paths from Nmap traceroute data"),
     NavEntry("reports", "Reports", "HTML, JSON, CSV, and XML reports from stored scans"),
     NavEntry("modules", "Modules", "Registered tool modules"),
     NavEntry("settings", "Settings", "Nmap location, appearance, and behaviour (Ctrl+,)"),
@@ -127,11 +128,12 @@ class MainWindow(QMainWindow):
         self.profiles_page = ProfilesPage(context)
         self.targets_page = TargetsPage(context)
         self.nse_page = NsePage(context)
+        self.topology_page = TopologyPage(context)
         self.reports_page = ReportsPage(context)
         self.modules = ModulesPage(context)
         self.settings_page = SettingsPage(context)
         self.pages: dict[str, BasePage] = {}
-        for page in (self.dashboard, self.new_scan, self.monitor, self.results, self.history, self.compare_page, self.targets_page, self.profiles_page, self.nse_page, self.reports_page, self.modules, self.settings_page):
+        for page in (self.dashboard, self.new_scan, self.monitor, self.results, self.history, self.compare_page, self.targets_page, self.profiles_page, self.nse_page, self.topology_page, self.reports_page, self.modules, self.settings_page):
             self.pages[page.page_key] = page
             self.stack.addWidget(page)
         self._current_key: Optional[str] = None
@@ -170,6 +172,7 @@ class MainWindow(QMainWindow):
         self.nse_page.add_script_requested.connect(self._add_script)
         self.history.report_requested.connect(self.open_reports_for)
         self.history.compare_requested.connect(self.open_comparison)
+        self.results.topology_requested.connect(self.open_topology_for)
         self.results.report_requested.connect(self.open_reports_for)
 
     def _build_menus(self) -> None:
@@ -244,6 +247,10 @@ class MainWindow(QMainWindow):
         set_status(self.nmap_status, level)
 
     # Navigation -------------------------------------------------------------
+
+    def open_topology_for(self, run_id: str) -> None:
+        self.topology_page.show_runs([run_id])
+        self.show_page("topology")
 
     def open_comparison(self, baseline_id: str, newer_id: str) -> None:
         self.show_page("compare")

@@ -61,6 +61,7 @@ class ResultsPage(BasePage):
 
     rerun_requested = pyqtSignal(object)  # ScanConfiguration
     report_requested = pyqtSignal(str)  # run id
+    topology_requested = pyqtSignal(str)  # run id
 
     def __init__(self, context: AppContext, parent: Optional[QWidget] = None) -> None:
         super().__init__(context, parent)
@@ -88,6 +89,7 @@ class ResultsPage(BasePage):
         export_menu.addAction("CSV (one row per port)", lambda: self._export("csv"))
         export_menu.addSeparator()
         self.report_action = export_menu.addAction("Create a report...", lambda: self.record and self.report_requested.emit(self.record.run_id))
+        self.topology_action = export_menu.addAction("Show on the topology map", lambda: self.record and self.topology_requested.emit(self.record.run_id))
         self.export_button.setMenu(export_menu)
         for button in (self.import_button, self.rerun_button, self.export_button):
             header_row.addWidget(button, 0, Qt.AlignmentFlag.AlignTop)
@@ -246,6 +248,7 @@ class ResultsPage(BasePage):
     def _set_actions_enabled(self, loaded: bool) -> None:
         self.export_button.setEnabled(loaded)
         self.report_action.setEnabled(loaded and self.record is not None)
+        self.topology_action.setEnabled(loaded and self.record is not None)
         self.rerun_button.setEnabled(loaded and self.record is not None)
 
     def show_run(self, run_id: str) -> None:
