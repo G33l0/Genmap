@@ -14,6 +14,7 @@ from PyQt6.QtWidgets import (
     QMessageBox,
     QPlainTextEdit,
     QPushButton,
+    QScrollArea,
     QSplitter,
     QVBoxLayout,
     QWidget,
@@ -29,6 +30,7 @@ from genmap.ui.pages.base import BasePage
 from genmap.ui.widgets.common import Card, KeyValueGrid, PageHeader, hint, label
 from genmap.ui.widgets.error_dialog import show_exception
 from genmap.ui.widgets.name_dialog import NameDialog
+from genmap.ui.widgets.responsive import FlowLayout
 
 ROLE_ID = Qt.ItemDataRole.UserRole + 1
 
@@ -110,7 +112,7 @@ class ProfilesPage(BasePage):
         splitter = QSplitter(Qt.Orientation.Horizontal)
         splitter.setChildrenCollapsible(False)
         self.list = QListWidget()
-        self.list.setMinimumWidth(220)
+        self.list.setMinimumWidth(240)
         self.list.setAccessibleName("Profiles")
         splitter.addWidget(self.list)
 
@@ -122,7 +124,7 @@ class ProfilesPage(BasePage):
         self.origin = label("", role="muted", wrap=True)
         detail_layout.addWidget(self.title)
         detail_layout.addWidget(self.origin)
-        actions = QHBoxLayout()
+        actions = FlowLayout()
         self.use_button = QPushButton("Scan with this profile")
         self.use_button.setProperty("accent", True)
         self.edit_button = QPushButton("Edit options")
@@ -135,7 +137,6 @@ class ProfilesPage(BasePage):
         self.delete_button.setProperty("danger", True)
         for button in (self.use_button, self.edit_button, self.rename_button, self.duplicate_button, self.reset_button, self.export_button, self.delete_button):
             actions.addWidget(button)
-        actions.addStretch(1)
         detail_layout.addLayout(actions)
         summary_card = Card("What this profile does")
         self.summary = KeyValueGrid()
@@ -152,7 +153,12 @@ class ProfilesPage(BasePage):
         command_card.add_widget(hint("<targets> is replaced by the targets you choose when starting a scan. Genmap adds its own -oX and --stats-every when it runs."))
         detail_layout.addWidget(command_card)
         detail_layout.addStretch(1)
-        splitter.addWidget(detail)
+        # A scroll area keeps the summary readable when the window is short.
+        scroller = QScrollArea()
+        scroller.setWidgetResizable(True)
+        scroller.setFrameShape(QScrollArea.Shape.NoFrame)
+        scroller.setWidget(detail)
+        splitter.addWidget(scroller)
         splitter.setStretchFactor(1, 1)
         splitter.setSizes([260, 700])
         outer.addWidget(splitter, 1)

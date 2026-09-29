@@ -42,8 +42,13 @@ High risk items require ticking an authorization box before the Start button is 
 * A scan that exits cleanly but hit a recognised problem, such as a name that did not resolve, finishes as *Completed with warnings* instead of *Completed*.
 * Service names count as identified only when version detection confirmed them.
 
+## Reports
+
+HTML reports are single files with no scripts and no remote resources. Every value that came from a scanned system (banners, titles, script output) is HTML escaped, and each page carries a Content Security Policy that blocks scripts, frames, and remote loads, so a report remains inert even when opened from an untrusted location. The tests include a banner containing `<script>` and an `<iframe>` in script output.
+
 ## Local data
 
+* The SQLite database enforces foreign keys and is backed up before every schema migration. Profile and target group imports are size limited and validated through the same models the interface uses.
 * Settings are written atomically to a temporary file and then renamed. A corrupt settings file is kept as a timestamped backup and replaced by defaults, and the user is told.
 * Run identifiers are checked before being used as folder names, so path traversal is not possible.
 * Scan results, console output, and logs are stored unencrypted in the user's profile. They can contain sensitive network information. Protect the Genmap data folder the way you would protect any scan output.

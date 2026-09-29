@@ -30,6 +30,7 @@ from genmap.ui.pages.scan_monitor import format_duration
 from genmap.ui.widgets.common import PageHeader, label
 from genmap.ui.widgets.error_dialog import show_exception
 from genmap.ui.widgets.inputs import EnumCombo, TextField
+from genmap.ui.widgets.responsive import FlowLayout
 
 ROLE_RUN_ID = Qt.ItemDataRole.UserRole + 1
 ROLE_SORT = Qt.ItemDataRole.UserRole + 2
@@ -89,7 +90,7 @@ class HistoryPage(BasePage):
         filters.addWidget(self.tag_filter)
         outer.addLayout(filters)
 
-        toolbar = QHBoxLayout()
+        toolbar = FlowLayout()
         self.open_button = QPushButton("Open results")
         self.open_button.setProperty("accent", True)
         self.report_button = QPushButton("Report...")
@@ -104,7 +105,6 @@ class HistoryPage(BasePage):
         self.delete_button.setProperty("danger", True)
         for button in (self.open_button, self.report_button, self.rerun_button, self.duplicate_button, self.tags_button, self.folder_button, self.delete_button):
             toolbar.addWidget(button)
-        toolbar.addStretch(1)
         outer.addLayout(toolbar)
 
         self.model = QStandardItemModel(0, len(self.HEADERS))

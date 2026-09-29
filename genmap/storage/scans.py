@@ -253,6 +253,13 @@ class ScanIndex:
         self.index_results(record.run_id, result)
         return True
 
+    def mark_all_for_reindex(self) -> int:
+        """Flag every scan so the next reconcile parses its XML again."""
+        from sqlalchemy import update
+
+        with self.db.session() as session:
+            return session.execute(update(Scan).values(results_indexed=False)).rowcount or 0
+
     # Queries -----------------------------------------------------------------
 
     def get(self, run_id: str) -> Optional[Scan]:

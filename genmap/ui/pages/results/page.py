@@ -2,8 +2,6 @@
 
 from __future__ import annotations
 
-import csv
-import io
 import logging
 import shutil
 from pathlib import Path
@@ -34,6 +32,7 @@ from genmap.core.results import ScanResult
 from genmap.engine.run_store import RunRecord
 from genmap.errors import GenmapError
 from genmap.nmap.xml_parser import parse_nmap_xml_file
+from genmap.reporting import result_to_csv
 from genmap.ui.app_context import AppContext
 from genmap.ui.pages.base import BasePage
 from genmap.ui.pages.results.details import host_html, port_html
@@ -56,35 +55,12 @@ from genmap.ui.widgets.inputs import EnumCombo, TextField
 log = logging.getLogger(__name__)
 
 
-def result_to_csv(result: ScanResult) -> str:
-    buffer = io.StringIO()
-    writer = csv.writer(buffer)
-    writer.writerow(["host", "hostname", "port", "protocol", "state", "reason", "service", "product", "version", "extra_info", "cpe", "scripts"])
-    for host in result.hosts:
-        for port in host.ports:
-            service = port.service
-            writer.writerow([
-                host.primary_address or "",
-                host.primary_hostname or "",
-                port.port_id,
-                port.protocol,
-                port.state,
-                port.reason or "",
-                service.name if service and service.name else "",
-                service.product if service and service.product else "",
-                service.version if service and service.version else "",
-                service.extra_info if service and service.extra_info else "",
-                " ".join(service.cpe) if service else "",
-                " ".join(s.script_id for s in port.scripts),
-            ])
-    return buffer.getvalue()
-
-
 class ResultsPage(BasePage):
     page_key = "results"
     page_title = "Results"
 
     rerun_requested = pyqtSignal(object)  # ScanConfiguration
+    report_requested = pyqtSignal(str)  # run id
 
     def __init__(self, context: AppContext, parent: Optional[QWidget] = None) -> None:
         super().__init__(context, parent)
@@ -110,6 +86,8 @@ class ResultsPage(BasePage):
         export_menu.addAction("Nmap XML (original)", lambda: self._export("xml"))
         export_menu.addAction("JSON (Genmap normalized)", lambda: self._export("json"))
         export_menu.addAction("CSV (one row per port)", lambda: self._export("csv"))
+        export_menu.addSeparator()
+        self.report_action = export_menu.addAction("Create a report...", lambda: self.record and self.report_requested.emit(self.record.run_id))
         self.export_button.setMenu(export_menu)
         for button in (self.import_button, self.rerun_button, self.export_button):
             header_row.addWidget(button, 0, Qt.AlignmentFlag.AlignTop)
@@ -267,6 +245,7 @@ class ResultsPage(BasePage):
 
     def _set_actions_enabled(self, loaded: bool) -> None:
         self.export_button.setEnabled(loaded)
+        self.report_action.setEnabled(loaded and self.record is not None)
         self.rerun_button.setEnabled(loaded and self.record is not None)
 
     def show_run(self, run_id: str) -> None:
@@ -464,7 +443,9 @@ class ResultsPage(BasePage):
             return
         base = self.record.run_id if self.record else (self.source_xml.stem if self.source_xml else "genmap-results")
         filters = {"xml": "Nmap XML (*.xml)", "json": "JSON (*.json)", "csv": "CSV (*.csv)"}
-        directory = self.context.settings.reports.default_output_directory or str(Path.home())
+        from genmap.ui.pages.reports import default_report_directory
+
+        directory = str(default_report_directory(self.context.settings.reports.default_output_directory))
         path, _ = QFileDialog.getSaveFileName(self, "Export results", str(Path(directory) / f"{base}.{kind}"), filters[kind])
         if not path:
             return

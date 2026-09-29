@@ -24,6 +24,8 @@ classifiers = [
 ]
 dependencies = [
     "PyQt6>=6.7",
+    "SQLAlchemy>=2.0",
+    "alembic>=1.13",
     "pydantic>=2.7",
     "defusedxml>=0.7",
 ]
@@ -47,7 +49,7 @@ genmap-gui = "genmap.app:main"
 include = ["genmap*"]
 
 [tool.setuptools.package-data]
-genmap = ["resources/**/*"]
+genmap = ["resources/**/*", "storage/migrations/*.py", "storage/migrations/*.mako", "storage/migrations/versions/*.py"]
 
 [tool.pytest.ini_options]
 testpaths = ["tests"]

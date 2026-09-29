@@ -39,6 +39,16 @@ On a headless Linux machine Qt needs `libegl1`, `libxkbcommon0`, `libfontconfig1
 
 `python -m genmap --self-test report.json` runs the same headless checks CI runs against the packaged Windows executable. CI starts `Genmap.exe` with `Start-Process -Wait` because PowerShell does not wait for windowed programs, and it fails the job unless the report says `ok` and `frozen`.
 
+## Database changes
+
+Change the models in `genmap/storage/models.py`, then generate and review a migration:
+
+```bash
+alembic revision --autogenerate -m "describe the change"
+```
+
+Replace custom column types in the generated file with plain SQLAlchemy types so old migrations never depend on current model code. `tests/test_storage.py::test_migrations_match_models` fails if the migrations and the models drift apart.
+
 ## Conventions
 
 * Keep `genmap/core` free of Qt and I/O. If something needs a process or a widget, it belongs in another layer.

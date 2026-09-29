@@ -12,7 +12,7 @@ Genmap puts a proper desktop workflow around the Nmap you already have installed
 
 ## What works today
 
-Genmap is in its first development phase. Everything listed here is implemented, tested, and running against real Nmap:
+Genmap has completed its first two development phases. Everything listed here is implemented, tested, and running against real Nmap:
 
 * **Nmap detection.** Finds Nmap on PATH, through the Windows registry, or in the usual install folders, or uses a path you choose. Reads the version, build libraries, NSE script database, interfaces, and routes, and checks for Npcap and administrator rights.
 * **Capability awareness.** Works out which scan types should work with your Nmap build, capture driver, and privileges, and explains anything that probably will not.
@@ -22,7 +22,11 @@ Genmap is in its first development phase. Everything listed here is implemented,
 * **Safe launch.** Nmap is started with an argument list and never through a shell. Script selections are resolved against the installed script database the way Nmap resolves them, so the warning names the exact scripts Nmap files as intrusive, brute, dos, exploit, fuzzer, or malware, and stays quiet when there are none. Spoofing, huge scopes, and random Internet targets also need explicit confirmation.
 * **Live scan view.** Streams Nmap output and counts hosts, open ports, and services as Nmap reports them. Service names only count as identified when version detection confirmed them; names Nmap takes from its port table are labelled as such. Progress appears only when Nmap prints its own estimate. You can cancel at any point, and a time limit is available.
 * **Results.** A secure XML parser produces normalised hosts, ports, services, CPEs, OS matches, uptime, traceroute, and NSE output, including structured script tables. Truncated files from cancelled scans are recovered. You can filter by host, port, protocol, state, service, product, version, OS, CPE, or NSE output, and export as the original XML, normalised JSON, or CSV.
-* **Scan history.** Every run keeps its configuration, command, console output, and XML. You can open, rerun, edit a copy, or delete any of them.
+* **Scan history.** Every run keeps its configuration, command, console output, and XML in its own folder, and a local SQLite database indexes the results. Search finds scans by target, discovered host name or address, command, profile, or tag. You can filter by status and tag, tag scans, open, rerun, edit a copy, report on, or delete them.
+* **Profiles.** Reusable scan configurations with a plain language summary and the command they produce. Create them from the New Scan form, update them when you change options, and rename, duplicate, reset, import, or export them as JSON files. The seven built in starting points arrive as editable profiles.
+* **Target groups.** Named lists of targets and exclusions, validated as you type, importable from and exportable to the one target per line format `nmap -iL` reads. Anything you scanned before is listed under *Recently scanned*, and New Scan can load or save a group in two clicks.
+* **NSE browser.** All scripts installed with your Nmap, searchable by name, description, and argument, filterable by Nmap's categories, with the description, arguments, usage, and example output read from each script file. Intrusive categories are highlighted, and one click adds a script to the scan.
+* **Reports.** Self contained HTML, JSON, CSV, or an exact copy of Nmap's XML, with scan details, configuration, hosts, ports, services, OS guesses, script output, and every warning. Reports describe what Nmap reported and never add risk ratings. HTML reports escape everything from the scanned systems and forbid scripts through a Content Security Policy.
 * **Settings.** Covers general behaviour, appearance, Nmap, network, scanning, NSE, storage, reports, logging, and advanced options.
 * **Themes.** Light, dark, following the Windows setting, and a black and green hacker theme with a monospace interface. Switch from **View, Theme** or **Settings, Appearance**.
 * **Module system.** A versioned module contract, with Nmap as the first module, is ready for future tools.
@@ -31,12 +35,15 @@ Genmap is in its first development phase. Everything listed here is implemented,
 
 ![Live scan in the hacker theme](docs/images/hacker-live-scan.png)
 
+![Profiles](docs/images/profiles.png)
+
+![NSE browser](docs/images/nse.png)
+
 ## Planned
 
-These appear in the sidebar but are disabled until they are real:
+Features that are not built yet stay disabled in the sidebar until they are real:
 
-* **Phase 2:** saved profiles and target groups, NSE browser, SQLite storage with SQLAlchemy and Alembic, and HTML reports.
-* **Phase 3:** scan comparison, topology map, and module UI.
+* **Phase 3:** scan comparison, topology map from traceroute data, and module management.
 * **Phase 4:** external modules, the Domain Atlas integration boundary, and correlation.
 
 ## Quick start

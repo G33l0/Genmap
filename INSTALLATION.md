@@ -84,7 +84,7 @@ Run `genmap --diagnose` for the same checks in a terminal.
 
 Set the `GENMAP_HOME` environment variable to keep everything in a single folder, for example on a USB drive.
 
-Each scan lives in `data/scans/<run id>/` as `run.json` (configuration and status), `result.xml` (raw Nmap XML), `stdout.log`, and `stderr.log`.
+Each scan lives in `data/scans/<run id>/` as `run.json` (configuration and status), `result.xml` (raw Nmap XML), `stdout.log`, and `stderr.log`. The file `data/genmap.sqlite3` indexes those folders and stores profiles, target groups, tags, and the list of created reports. Reports are written to `Documents\Genmap Reports` unless you choose another folder.
 
 ## Building Genmap.exe
 

@@ -34,6 +34,7 @@ from genmap.ui.widgets.common import PageHeader, form_layout, hint, label, set_s
 from genmap.ui.widgets.error_dialog import show_exception
 from genmap.ui.widgets.inputs import TextField
 from genmap.ui.widgets.name_dialog import NameDialog
+from genmap.ui.widgets.responsive import FlowLayout
 
 ROLE_ID = Qt.ItemDataRole.UserRole + 1
 
@@ -115,7 +116,7 @@ class TargetsPage(BasePage):
         editor_layout.addLayout(editors, 1)
         self.validation = label("", role="small", wrap=True)
         editor_layout.addWidget(self.validation)
-        actions = QHBoxLayout()
+        actions = FlowLayout()
         self.scan_button = QPushButton("Scan this group")
         self.scan_button.setProperty("accent", True)
         self.save_button = QPushButton("Save")
@@ -125,7 +126,6 @@ class TargetsPage(BasePage):
         self.delete_button.setProperty("danger", True)
         for button in (self.scan_button, self.save_button, self.revert_button, self.export_button, self.delete_button):
             actions.addWidget(button)
-        actions.addStretch(1)
         editor_layout.addLayout(actions)
         splitter.addWidget(editor)
         splitter.setStretchFactor(1, 1)

@@ -137,6 +137,9 @@ class KeyValueGrid(QWidget):
             item = self._grid.takeAt(0)
             widget = item.widget()
             if widget is not None:
+                # Detach at once; deleteLater alone leaves the old labels painted until the event loop runs.
+                widget.hide()
+                widget.setParent(None)
                 widget.deleteLater()
         self._rows.clear()
 

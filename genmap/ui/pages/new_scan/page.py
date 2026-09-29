@@ -44,7 +44,7 @@ from genmap.ui.app_context import AppContext
 from genmap.ui.pages.base import BasePage
 from genmap.ui.pages.new_scan.confirm_dialog import ConfirmScanDialog
 from genmap.storage.profiles import strip_targets
-from genmap.ui.pages.new_scan.option_tabs import ALL_TABS, OptionTab, TargetsTab, describe_target_scope
+from genmap.ui.pages.new_scan.option_tabs import ALL_TABS, OptionTab, ScriptsTab, TargetsTab, describe_target_scope
 from genmap.ui.widgets.command_inspector import CommandInspectorDialog
 from genmap.ui.widgets.common import PageHeader, label, set_status
 from genmap.ui.widgets.error_dialog import show_exception
@@ -381,6 +381,16 @@ class NewScanPage(BasePage):
         tab.exclusions.setText(", ".join(exclusions))
         self.targets.setText(", ".join(targets))
         self.refresh()
+
+    def add_script(self, name: str) -> bool:
+        """Append a script to the selection. Returns False when it was already there."""
+        tab = self.option_tabs[ALL_TABS.index(ScriptsTab)]
+        items = tab._current_items()
+        if name in items:
+            return False
+        tab.expressions.setText(", ".join(items + [name]))
+        self.refresh()
+        return True
 
     def _fill_groups_menu(self) -> None:
         self.groups_menu.clear()

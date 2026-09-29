@@ -69,6 +69,18 @@ Executables built with PyInstaller are sometimes flagged by heuristic antivirus 
 
 **Settings, Logging, Open log folder** opens the application logs. Each scan's own Nmap output is in its run folder, which you can reach from **Scan History, Show files**. Set the log level to *Debug* and reproduce the problem before reporting it.
 
+## History is empty or out of date
+
+The scan index is rebuilt from the scan folders. Open **Settings, Storage** and choose **Rebuild scan index**. **Check database** runs SQLite's integrity check.
+
+## "Database rebuilt" at startup
+
+Genmap found its database file damaged, kept it as `genmap.damaged-<time>.sqlite3`, created a new one, and rebuilt scan history from the scan folders. Profiles and target groups lived only in the damaged file; export profiles you rely on from time to time so you have a copy.
+
+## A scan appears as "files missing"
+
+Its folder was removed from disk outside Genmap. The indexed summary stays so the history is not silently rewritten; delete the entry from **Scan History** if you no longer need it.
+
 ## Resetting Genmap
 
 Close Genmap and delete the data folder listed under **Settings, Storage** (on Windows, `%LOCALAPPDATA%\Genmap`). This removes all settings and scan history.

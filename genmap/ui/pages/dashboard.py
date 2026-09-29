@@ -212,7 +212,11 @@ class DashboardPage(ScrollPage):
 
     def on_shown(self) -> None:
         self._refresh_runs()
-        recent = self.context.settings.general.recent_targets
+        recent = list(self.context.settings.general.recent_targets)
+        try:
+            recent += [t for t, _when, _count in self.context.scan_index.recent_targets(limit=50) if t not in recent]
+        except Exception:
+            pass
         completer = QCompleter(recent, self)
         completer.setCaseSensitivity(Qt.CaseSensitivity.CaseInsensitive)
         self.quick_targets.setCompleter(completer)

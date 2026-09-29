@@ -164,7 +164,50 @@ def run_self_test(report_path: Path) -> int:
     check("xml parser rejects entities", secure_parser)
     check("command builder", command)
     check("settings round trip", settings)
+    def database():
+        from genmap.core.scan_config import ScanConfiguration
+        from genmap.engine.run_store import RunStatus, RunStore
+        from genmap.paths import default_paths
+        from genmap.storage import open_database
+        from genmap.storage.profiles import ProfileRepository
+        from genmap.storage.scans import ScanIndex
+
+        paths = default_paths().ensure()
+        db = open_database(paths.data_dir / "selftest.sqlite3")
+        try:
+            revision = db.current_revision()
+            assert revision is not None, "migrations did not run"
+            seeded = ProfileRepository(db).seed_builtins([])
+            assert seeded, "built in profiles were not seeded"
+            store = RunStore(paths.data_dir / "selftest-scans")
+            config = ScanConfiguration()
+            config.targets.targets = ["192.0.2.10"]
+            record = store.create(config)
+            store.xml_path(record.run_id).write_text(SAMPLE_XML, encoding="utf-8")
+            record.status = RunStatus.COMPLETED
+            store.save(record)
+            report = ScanIndex(db).reconcile(store)
+            assert report.indexed == 1, f"index report {report}"
+            assert db.integrity_ok()
+        finally:
+            db.dispose()
+        return f"schema {revision}, {len(seeded)} profiles seeded, sample scan indexed"
+
+    def reports():
+        from genmap.nmap.xml_parser import parse_nmap_xml_string
+        from genmap.paths import default_paths
+        from genmap.reporting import ReportSource, generate_report
+
+        folder = default_paths().ensure().data_dir / "selftest-reports"
+        source = ReportSource(parse_nmap_xml_string(SAMPLE_XML))
+        written = [generate_report(source, fmt, folder / f"report.{fmt}").name for fmt in ("html", "json", "csv")]
+        html_text = (folder / "report.html").read_text(encoding="utf-8")
+        assert "OpenSSH" in html_text and "default-src 'none'" in html_text
+        return ", ".join(written)
+
     check("nmap environment probe", environment)
+    check("database and migrations", database)
+    check("reports", reports)
     check("user interface", interface)
 
     from genmap import __version__

@@ -8,6 +8,8 @@ Genmap is a desktop orchestrator around external tools. Nmap is the first and mo
 genmap/
   ui/          PyQt6 windows, pages, widgets, item models, theme
   engine/      Process execution (QProcess) and on disk run storage
+  storage/     SQLite database: models, Alembic migrations, repositories
+  reporting/   HTML, JSON, CSV, and XML reports
   modules/     Module contract, registry, and the Nmap module
   nmap/        Nmap adapter: discovery, probing, command building, parsing
   core/        Pure domain logic: configuration, targets, ports, results, NSE selection
@@ -61,7 +63,26 @@ Genmap tries hard not to claim more than Nmap established:
 
 **No invented progress.** Nmap prints progress only when it has an estimate. Without one, the progress bar is indeterminate. On Linux and macOS, Nmap stops printing `--stats-every` lines when it has no terminal, so progress there usually stays indeterminate. Counters come only from lines Nmap printed.
 
-**Files first, database next.** Phase 1 stores runs as folders with JSON and XML. Phase 2 adds SQLite through SQLAlchemy and Alembic as an index and query layer on top of those folders. The folders remain the source of truth, so a database migration can never lose raw Nmap output.
+**Folders are the record, the database is the index.** Every run lives in its own folder with JSON and raw XML. SQLite, through SQLAlchemy and Alembic, indexes those folders into normalised tables so history search, reports, and later comparison work without reparsing XML. Because the folders remain the source of truth, a database migration or a damaged database file can never lose raw Nmap output: Genmap sets a damaged file aside and rebuilds the index from the folders.
+
+## Database
+
+`genmap/storage/models.py` defines the schema:
+
+| Table | Holds |
+|-------|-------|
+| `scan`, `scan_target`, `tag`, `scan_tag` | One row per run with status, timing, command, the verbatim configuration, summary counters, targets, and tags |
+| `host`, `address`, `hostname` | Every host Nmap reported, with all its addresses and names |
+| `port`, `service`, `cpe` | Ports and their state, probed or table derived service details, and CPEs from services and OS matches |
+| `os_match`, `os_class` | Nmap's OS guesses with accuracy, in rank order |
+| `script_result` | NSE output for pre scan, host, port, and post scan phases, with structured tables kept as JSON |
+| `traceroute_hop` | Hops per host, ready for the topology view |
+| `profile`, `target_group`, `target_group_entry` | Saved profiles and target groups |
+| `report` | Reports Genmap created and where they were written |
+
+Migrations live in `genmap/storage/migrations` and ship inside the package. `open_database` runs them at startup, backs the file up before any upgrade, enables WAL mode and foreign keys, and recovers from a damaged file. Columns named `extra` keep attributes Genmap does not model yet, so newer Nmap output is not lost.
+
+`ScanIndex` records a run when it starts, indexes its XML on a worker thread when it finishes, and `reconcile` brings older run folders into the index at startup. Profiles strip targets before saving, because a profile describes how to scan rather than what.
 
 ## Threads
 

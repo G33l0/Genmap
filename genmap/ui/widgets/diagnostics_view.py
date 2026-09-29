@@ -31,6 +31,8 @@ class DiagnosticsView(QWidget):
             item = self._layout.takeAt(0)
             widget = item.widget()
             if widget is not None and widget is not self._empty:
+                widget.hide()
+                widget.setParent(None)
                 widget.deleteLater()
         self._layout.addWidget(self._empty)
 

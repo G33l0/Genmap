@@ -35,7 +35,9 @@ from genmap.ui.pages.dashboard import DashboardPage
 from genmap.ui.pages.history import HistoryPage
 from genmap.ui.pages.modules import ModulesPage
 from genmap.ui.pages.new_scan import NewScanPage
+from genmap.ui.pages.nse import NsePage
 from genmap.ui.pages.profiles import ProfilesPage
+from genmap.ui.pages.reports import ReportsPage
 from genmap.ui.pages.targets import TargetsPage
 from genmap.ui.pages.results import ResultsPage
 from genmap.ui.pages.scan_monitor import ScanMonitorPage
@@ -56,9 +58,9 @@ NAV_ENTRIES = [
     NavEntry("history", "Scan History", "Previous scans (Ctrl+H)"),
     NavEntry("targets", "Targets", "Saved target groups and recently scanned targets"),
     NavEntry("profiles", "Profiles", "Reusable scan configurations"),
-    NavEntry("nse", "NSE", "Script browser: planned for the next phase", enabled=False),
+    NavEntry("nse", "NSE Scripts", "Browse the scripts installed with Nmap"),
     NavEntry("topology", "Topology", "Traceroute based map: planned for a later phase", enabled=False),
-    NavEntry("reports", "Reports", "HTML reports: planned for the next phase", enabled=False),
+    NavEntry("reports", "Reports", "HTML, JSON, CSV, and XML reports from stored scans"),
     NavEntry("modules", "Modules", "Registered tool modules"),
     NavEntry("settings", "Settings", "Nmap location, appearance, and behaviour (Ctrl+,)"),
 ]
@@ -121,10 +123,12 @@ class MainWindow(QMainWindow):
         self.history = HistoryPage(context)
         self.profiles_page = ProfilesPage(context)
         self.targets_page = TargetsPage(context)
+        self.nse_page = NsePage(context)
+        self.reports_page = ReportsPage(context)
         self.modules = ModulesPage(context)
         self.settings_page = SettingsPage(context)
         self.pages: dict[str, BasePage] = {}
-        for page in (self.dashboard, self.new_scan, self.monitor, self.results, self.history, self.targets_page, self.profiles_page, self.modules, self.settings_page):
+        for page in (self.dashboard, self.new_scan, self.monitor, self.results, self.history, self.targets_page, self.profiles_page, self.nse_page, self.reports_page, self.modules, self.settings_page):
             self.pages[page.page_key] = page
             self.stack.addWidget(page)
         self._current_key: Optional[str] = None
@@ -160,6 +164,9 @@ class MainWindow(QMainWindow):
         self.profiles_page.edit_profile_requested.connect(self._use_profile)
         self.targets_page.scan_targets_requested.connect(self._scan_targets)
         self.new_scan.save_targets_requested.connect(self._save_targets_as_group)
+        self.nse_page.add_script_requested.connect(self._add_script)
+        self.history.report_requested.connect(self.open_reports_for)
+        self.results.report_requested.connect(self.open_reports_for)
 
     def _build_menus(self) -> None:
         bar = self.menuBar()
@@ -283,6 +290,15 @@ class MainWindow(QMainWindow):
 
     def _save_targets_as_group(self, targets: list, exclusions: list) -> None:
         self.targets_page.create_group(targets, exclusions, title="Save targets as group")
+
+    def open_reports_for(self, run_id: str) -> None:
+        self.show_page("reports")
+        self.reports_page.select_scan(run_id)
+
+    def _add_script(self, name: str) -> None:
+        added = self.new_scan.add_script(name)
+        message = f"Added {name} to the New Scan script selection." if added else f"{name} is already in the New Scan script selection."
+        self.statusBar().showMessage(message, 6000)
 
     def _use_profile(self, profile_id) -> None:
         self.new_scan.apply_profile(profile_id, keep_targets=True)

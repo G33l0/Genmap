@@ -466,7 +466,13 @@ class SettingsPage(BasePage):
         card = section.card("Locations")
         self.storage_grid = KeyValueGrid()
         paths = self.context.paths
-        for key, path in (("Scans", paths.scans_dir), ("Settings", paths.config_dir), ("Logs", paths.log_dir), ("Data", paths.data_dir)):
+        for key, path in (
+            ("Scans", paths.scans_dir),
+            ("Database", paths.database_file),
+            ("Settings", paths.config_dir),
+            ("Logs", paths.log_dir),
+            ("Data", paths.data_dir),
+        ):
             self.storage_grid.add_row(key, str(path), mono=True)
         card.add_widget(self.storage_grid)
         row = QHBoxLayout()
@@ -477,27 +483,81 @@ class SettingsPage(BasePage):
         row.addStretch(1)
         card.add_layout(row)
         card.add_widget(hint("Set the GENMAP_HOME environment variable to keep all Genmap data in one folder, for example on a portable drive."))
-        card = section.card("Retention")
-        keep = QCheckBox("Keep raw Nmap XML and console output")
-        keep.setEnabled(False)
-        keep.setToolTip("Raw output is always kept; it is the source of truth for results.")
-        card.add_widget(keep)
-        self._bind_check(section, keep, "storage", "keep_raw_output")
+
+        card = section.card("Scan index")
+        card.add_widget(hint(
+            "Each scan folder keeps the raw Nmap XML, console output, and configuration; these are never discarded. "
+            "The database indexes them for history, search, and reports, and can always be rebuilt from the folders."
+        ))
+        row = QHBoxLayout()
+        self.rebuild_button = QPushButton("Rebuild scan index")
+        self.rebuild_button.setToolTip("Read every scan folder again and refresh the database")
+        self.rebuild_button.clicked.connect(self._rebuild_index)
+        self.check_button = QPushButton("Check database")
+        self.check_button.clicked.connect(self._check_database)
+        row.addWidget(self.rebuild_button)
+        row.addWidget(self.check_button)
+        row.addStretch(1)
+        card.add_layout(row)
+        self.index_status = label("", role="muted", wrap=True)
+        card.add_widget(self.index_status)
+        self.context.index_changed.connect(self._on_index_changed)
         return section
 
     def _refresh_storage(self) -> None:
         size = self.context.run_store.total_size_bytes() / 1_000_000
         self.storage_grid.set_value("Scans", f"{self.context.paths.scans_dir}  ({size:.1f} MB)")
+        db_size = self.context.database.size_bytes() / 1_000_000
+        revision = self.context.database.current_revision() or "none"
+        self.storage_grid.set_value("Database", f"{self.context.paths.database_file}  ({db_size:.1f} MB, schema {revision})")
+        stats = self.context.scan_index.stats()
+        self.index_status.setText(f"{stats.scans} scans indexed, {stats.distinct_hosts} distinct hosts seen up, {stats.open_port_observations} open port observations.")
+
+    def _rebuild_index(self) -> None:
+        self.rebuild_button.setEnabled(False)
+        self.index_status.setText("Rebuilding the scan index...")
+        self._rebuilding = True
+        self.context.scan_index.mark_all_for_reindex()
+        self.context.reconcile_index()
+
+    def _on_index_changed(self) -> None:
+        if getattr(self, "_rebuilding", False):
+            self._rebuilding = False
+            self.rebuild_button.setEnabled(True)
+        if self.isVisible():
+            self._refresh_storage()
+
+    def _check_database(self) -> None:
+        try:
+            ok = self.context.database.integrity_ok()
+        except Exception as exc:
+            ok = False
+            detail = str(exc)
+        else:
+            detail = ""
+        if ok:
+            QMessageBox.information(self, "Database check", "The database passed SQLite's integrity check.")
+        else:
+            show_error(
+                self,
+                "Database check",
+                "The database failed SQLite's integrity check.",
+                "Close Genmap and start it again; a damaged database is set aside and the scan index rebuilt from the scan folders.",
+                detail,
+            )
 
     def _reports(self) -> _Section:
         section = _Section("Reports")
-        card = section.card("Export defaults")
+        card = section.card("Defaults")
         form = form_layout()
-        folder = TextField("Home folder")
-        form.addRow("Export folder", self._path_row(folder, directory=True, caption="Default export folder"))
+        fmt = EnumCombo([("HTML report", "html"), ("JSON data", "json"), ("CSV, one row per port", "csv"), ("Original Nmap XML", "xml")])
+        form.addRow("Default format", fmt)
+        self._bind_combo(section, fmt, "reports", "default_format")
+        folder = TextField("Documents\\Genmap Reports")
+        form.addRow("Report folder", self._path_row(folder, directory=True, caption="Default report folder"))
         self._bind_text(section, folder, "reports", "default_output_directory")
         card.add_layout(form)
-        card.add_widget(hint("Results can currently be exported as the original Nmap XML, normalized JSON, or CSV from the Results page."))
+        card.add_widget(hint("Used by the Reports page and by exports from the Results page."))
         return section
 
     def _logging(self) -> _Section:
