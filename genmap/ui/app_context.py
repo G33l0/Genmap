@@ -219,3 +219,5 @@ class AppContext(QObject):
             self.database.checkpoint()
         except Exception:
             log.debug("Database checkpoint on shutdown failed", exc_info=True)
+        # Closing pooled connections releases the file, which Windows keeps locked otherwise.
+        self.database.dispose()

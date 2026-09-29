@@ -57,8 +57,14 @@ class Database:
             )
         event.listen(engine, "connect", _configure_sqlite)
         if self.path is not None:
-            with engine.connect() as connection:
-                connection.exec_driver_sql("PRAGMA journal_mode=WAL")
+            try:
+                with engine.connect() as connection:
+                    connection.exec_driver_sql("PRAGMA journal_mode=WAL")
+            except Exception:
+                # The pool would otherwise keep the file open, and Windows
+                # refuses to move or delete an open file during recovery.
+                engine.dispose()
+                raise
         return engine
 
     @contextmanager
@@ -135,6 +141,7 @@ def open_database(path: Path) -> Database:
     blocking the application. ``Database.recovered_from`` tells the caller
     where the damaged file went so the user can be informed.
     """
+    database: Optional[Database] = None
     try:
         database = Database(path)
         if path.exists() and path.stat().st_size and not database.integrity_ok():
@@ -143,10 +150,8 @@ def open_database(path: Path) -> Database:
         return database
     except (DatabaseError, sqlite3.DatabaseError) as exc:
         log.error("Database %s is unusable: %s", path, exc)
-        try:
-            database.dispose()  # type: ignore[possibly-undefined]
-        except Exception:
-            pass
+        if database is not None:
+            database.dispose()
         stamp = datetime.now().strftime("%Y%m%d-%H%M%S")
         damaged = path.with_name(f"{path.stem}.damaged-{stamp}{path.suffix}")
         try:

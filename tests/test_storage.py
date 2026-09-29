@@ -40,6 +40,41 @@ def test_foreign_keys_are_enforced(db):
             session.add(Host(scan_id=999, state="up"))
 
 
+def _open_handles(path):
+    """Files this process still has open that point at ``path`` (Linux only)."""
+    import os
+
+    fd_dir = "/proc/self/fd"
+    found = []
+    for fd in os.listdir(fd_dir):
+        try:
+            if os.path.realpath(os.readlink(os.path.join(fd_dir, fd))) == os.path.realpath(path):
+                found.append(fd)
+        except OSError:
+            continue
+    return found
+
+
+@pytest.mark.skipif(not __import__("os").path.isdir("/proc/self/fd"), reason="needs /proc to inspect open handles")
+def test_damaged_database_is_released_before_moving(tmp_path, monkeypatch):
+    """Windows cannot move a file that is still open, so recovery must close every handle first."""
+    import genmap.storage.database as database_module
+
+    real_move = database_module.shutil.move
+
+    def windows_like_move(source, destination):
+        if _open_handles(source):
+            raise PermissionError(f"{source} is still open")
+        return real_move(source, destination)
+
+    monkeypatch.setattr(database_module.shutil, "move", windows_like_move)
+    path = tmp_path / "genmap.sqlite3"
+    path.write_bytes(b"this is not a sqlite database at all" * 100)
+    database = open_database(path)
+    assert database.recovered_from is not None and database.recovered_from.exists()
+    database.dispose()
+
+
 def test_damaged_database_is_set_aside(tmp_path):
     path = tmp_path / "genmap.sqlite3"
     path.write_bytes(b"this is not a sqlite database at all" * 100)

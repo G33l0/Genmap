@@ -521,20 +521,26 @@ def test_settings_storage_rebuild_and_check(window, context, fixtures, qtbot, mo
 
 
 def test_flow_layout_wraps_instead_of_squeezing(qtbot):
+    from PyQt6.QtCore import QRect
     from PyQt6.QtWidgets import QPushButton, QWidget
 
     from genmap.ui.widgets.responsive import FlowLayout
 
     host = QWidget()
     qtbot.addWidget(host)
-    layout = FlowLayout(host)
+    layout = FlowLayout(host, spacing=8)
     buttons = [QPushButton(f"A fairly long button label {i}") for i in range(6)]
     for button in buttons:
         layout.addWidget(button)
-    host.resize(1400, 200)
     host.show()
-    qtbot.waitUntil(lambda: buttons[-1].y() == buttons[0].y())
-    host.resize(420, 400)
-    qtbot.waitUntil(lambda: buttons[-1].y() > buttons[0].y())
-    assert all(b.width() >= b.sizeHint().width() for b in buttons)
-    assert layout.heightForWidth(420) > layout.heightForWidth(1400)
+    hints = [b.sizeHint() for b in buttons]
+    # Geometry is driven directly so the result does not depend on the
+    # platform's screen size or fonts.
+    wide = sum(h.width() for h in hints) + 8 * len(hints) + 20
+    layout.setGeometry(QRect(0, 0, wide, 400))
+    assert len({b.geometry().y() for b in buttons}) == 1
+    narrow = max(h.width() for h in hints) + 10
+    layout.setGeometry(QRect(0, 0, narrow, 800))
+    assert len({b.geometry().y() for b in buttons}) == len(buttons)
+    assert all(b.geometry().width() == h.width() for b, h in zip(buttons, hints))
+    assert layout.heightForWidth(narrow) > layout.heightForWidth(wide)
