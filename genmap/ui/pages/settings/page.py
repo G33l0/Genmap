@@ -3,14 +3,16 @@
 from __future__ import annotations
 
 import logging
+import sys
 from pathlib import Path
 from typing import Callable, Optional
 
 from pydantic import ValidationError
 from PyQt6.QtCore import Qt, QUrl
-from PyQt6.QtGui import QDesktopServices
+from PyQt6.QtGui import QColor, QDesktopServices
 from PyQt6.QtWidgets import (
     QAbstractItemView,
+    QApplication,
     QCheckBox,
     QComboBox,
     QFileDialog,
@@ -31,6 +33,7 @@ from PyQt6.QtWidgets import (
     QWidget,
 )
 
+from genmap.errors import GenmapError
 from genmap.logging_setup import ring_buffer
 from genmap.nmap.environment import NmapEnvironment
 from genmap.settings import AppSettings
@@ -39,7 +42,7 @@ from genmap.ui.pages.base import BasePage
 from genmap.ui.theme.palettes import THEME_CHOICES
 from genmap.ui.widgets.common import Card, KeyValueGrid, PageHeader, form_layout, hint, label
 from genmap.ui.widgets.diagnostics_view import DiagnosticsView
-from genmap.ui.widgets.error_dialog import show_error
+from genmap.ui.widgets.error_dialog import show_error, show_exception
 from genmap.ui.widgets.inputs import EnumCombo, TextField
 
 log = logging.getLogger(__name__)
@@ -370,6 +373,37 @@ class SettingsPage(BasePage):
         card = section.card("Diagnostics")
         self.diagnostics = DiagnosticsView()
         card.add_widget(self.diagnostics)
+        row = QHBoxLayout()
+        self.copy_report_button = QPushButton("Copy report")
+        self.copy_report_button.setToolTip("Copy a plain text summary of this installation for a bug report. Interface addresses are left out.")
+        self.copy_report_button.clicked.connect(self._copy_report)
+        self.save_report_button = QPushButton("Save report...")
+        self.save_report_button.clicked.connect(self._save_report)
+        row.addWidget(self.copy_report_button)
+        row.addWidget(self.save_report_button)
+        row.addStretch(1)
+        card.add_layout(row)
+        self.report_status = label("", role="small", wrap=True, selectable=True)
+        card.add_widget(self.report_status)
+
+        card = section.card("Data files")
+        card.add_widget(hint(
+            "Nmap looks for each file separately: the data directory above first, then NMAPDIR, your user Nmap folder, "
+            "and the folders next to the Nmap program. This table shows the copy Nmap will read."
+        ))
+        self.data_files = QTableWidget(0, 3)
+        self.data_files.setHorizontalHeaderLabels(["File", "Contents", "Needed for"])
+        self.data_files.verticalHeader().setVisible(False)
+        self.data_files.setEditTriggers(QAbstractItemView.EditTrigger.NoEditTriggers)
+        self.data_files.setWordWrap(False)
+        header = self.data_files.horizontalHeader()
+        header.setSectionResizeMode(0, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(1, QHeaderView.ResizeMode.ResizeToContents)
+        header.setSectionResizeMode(2, QHeaderView.ResizeMode.Stretch)
+        self.data_files.setMinimumHeight(240)
+        card.add_widget(self.data_files)
+        self.data_files_location = label("", role="small", wrap=True, selectable=True)
+        card.add_widget(self.data_files_location)
 
         card = section.card("Capabilities")
         card.add_widget(hint("Derived from the version, build libraries, packet capture driver, and privileges. Nmap has the final say when a scan runs."))
@@ -612,6 +646,42 @@ class SettingsPage(BasePage):
 
     # Environment -------------------------------------------------------------
 
+    def diagnostic_report(self) -> str:
+        import platform
+
+        from PyQt6.QtCore import PYQT_VERSION_STR, QT_VERSION_STR
+
+        from genmap import __version__
+        from genmap.nmap.diagnostic_report import render_diagnostic_report
+
+        about = [
+            ("Genmap", __version__ + (" (packaged)" if getattr(sys, "frozen", False) else " (from source)")),
+            ("Operating system", platform.platform()),
+            ("Python", platform.python_version()),
+            ("Qt", f"{QT_VERSION_STR} (PyQt {PYQT_VERSION_STR})"),
+            ("Theme", self.context.settings.appearance.theme),
+        ]
+        return render_diagnostic_report(self.context.environment, about)
+
+    def _copy_report(self) -> None:
+        QApplication.clipboard().setText(self.diagnostic_report())
+        self.report_status.setText("Report copied to the clipboard.")
+
+    def _save_report(self) -> None:
+        from genmap.ui.pages.reports import default_report_directory
+
+        folder = default_report_directory(self.context.settings.reports.default_output_directory)
+        path, _ = QFileDialog.getSaveFileName(self, "Save diagnostic report", str(folder / "genmap-diagnostics.txt"), "Text files (*.txt)")
+        if not path:
+            return
+        try:
+            Path(path).parent.mkdir(parents=True, exist_ok=True)
+            Path(path).write_text(self.diagnostic_report(), encoding="utf-8")
+        except OSError as exc:
+            show_exception(self, GenmapError("The report could not be saved.", details=str(exc)), "Report not saved")
+            return
+        self.report_status.setText(f"Saved {path}")
+
     def _save_and_probe(self) -> None:
         if self._dirty:
             if not self.save():
@@ -636,9 +706,33 @@ class SettingsPage(BasePage):
         self.nmap_summary.set_value("Privileges", privilege_label(env.privileges))
         self.diagnostics.set_diagnostics(env.diagnostics)
 
-        palette = self.context.theme.palette
-        from PyQt6.QtGui import QColor
+        missing_color = QColor(self.context.theme.palette.danger)
+        self.data_files.setRowCount(len(env.data_files))
+        for row, status in enumerate(env.data_files):
+            if status.path is not None:
+                where = f"{status.path}\nFound through {status.origin}" + (", an assumed install location" if status.assumed_location else "")
+            else:
+                where = "Not found in any folder Nmap searches."
+            items = [
+                QTableWidgetItem(status.spec.name),
+                QTableWidgetItem(status.summary if status.found else status.problem or ""),
+                QTableWidgetItem(status.spec.needed_for),
+            ]
+            for item in items:
+                item.setToolTip(f"{status.spec.purpose}\n{where}")
+            if not status.found:
+                items[1].setForeground(missing_color)
+            for column, item in enumerate(items):
+                self.data_files.setItem(row, column, item)
+        folders = sorted({str(st.path.parent.parent if "/" in st.spec.name else st.path.parent) for st in env.data_files if st.path is not None})
+        if not folders:
+            self.data_files_location.setText("No data files were found.")
+        elif len(folders) == 1:
+            self.data_files_location.setText(f"All files are read from {folders[0]}. Hover a row for details.")
+        else:
+            self.data_files_location.setText("Files are read from " + ", ".join(folders) + ". Hover a row to see which copy each file uses.")
 
+        palette = self.context.theme.palette
         capabilities = list(env.capabilities)
         self.capabilities.setRowCount(len(capabilities))
         for row, capability in enumerate(capabilities):

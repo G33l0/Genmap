@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import logging
+from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtCore import QObject, QRunnable, QThreadPool, pyqtSignal
@@ -118,6 +119,8 @@ class AppContext(QObject):
         self.engine.max_concurrent = scanning.max_concurrent_scans if settings.advanced.allow_multiple_scans else 1
         self.engine.stats_interval = scanning.stats_interval if scanning.inject_stats_interval else None
         self.engine.timeout_seconds = scanning.scan_timeout_minutes * 60
+        data_directory = settings.nmap.data_directory
+        self.engine.data_directory = Path(data_directory).expanduser() if data_directory and Path(data_directory).expanduser().is_dir() else None
         self.engine.keep_console_logs = scanning.keep_stdout_log
         from genmap.logging_setup import set_level
 

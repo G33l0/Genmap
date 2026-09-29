@@ -103,7 +103,7 @@ class OptionTab(QScrollArea):
         """Optional hook for tabs that adapt to the installed Nmap."""
 
 
-def _file_row(field: QLineEdit, caption: str, parent: QWidget, *, save: bool = False) -> QWidget:
+def _file_row(field: QLineEdit, caption: str, parent: QWidget, *, save: bool = False, directory: bool = False) -> QWidget:
     row = QWidget()
     layout = QHBoxLayout(row)
     layout.setContentsMargins(0, 0, 0, 0)
@@ -113,7 +113,9 @@ def _file_row(field: QLineEdit, caption: str, parent: QWidget, *, save: bool = F
 
     def browse() -> None:
         start = field.text() or str(Path.home())
-        if save:
+        if directory:
+            path = QFileDialog.getExistingDirectory(parent, caption, start)
+        elif save:
             path, _ = QFileDialog.getSaveFileName(parent, caption, start)
         else:
             path, _ = QFileDialog.getOpenFileName(parent, caption, start, "All files (*)")
@@ -429,6 +431,11 @@ class DiscoveryTab(OptionTab):
         form.addRow("DNS servers", self.dns_servers)
         self.system_dns = QCheckBox("Use the operating system resolver (--system-dns)")
         form.addRow("", self.system_dns)
+        self.resolve_all = QCheckBox("Scan every address a hostname resolves to (--resolve-all)")
+        self.resolve_all.setToolTip("Without this, Nmap scans only the first address of each name.")
+        form.addRow("", self.resolve_all)
+        self.unique = QCheckBox("Scan each address once, even when several names point to it (--unique)")
+        form.addRow("", self.unique)
         layout.addLayout(form)
         self.skip.toggled.connect(lambda checked: self.probes.setEnabled(not checked))
         self.finish()
@@ -450,6 +457,8 @@ class DiscoveryTab(OptionTab):
         self.dns_mode.set_current_value(config.dns.resolution)
         self.dns_servers.setText(", ".join(config.dns.servers))
         self.system_dns.setChecked(config.dns.use_system_resolver)
+        self.resolve_all.setChecked(config.dns.resolve_all)
+        self.unique.setChecked(config.dns.unique_addresses)
 
     def dump(self, data: dict[str, Any]) -> None:
         data["discovery"] = {
@@ -469,7 +478,18 @@ class DiscoveryTab(OptionTab):
             "resolution": self.dns_mode.current_value().value,
             "servers": split_list(self.dns_servers.text()),
             "use_system_resolver": self.system_dns.isChecked(),
+            "resolve_all": self.resolve_all.isChecked(),
+            "unique_addresses": self.unique.isChecked(),
         }
+
+    def set_environment(self, env: Optional[NmapEnvironment]) -> None:
+        defaults = {"resolve_all": "Without this, Nmap scans only the first address of each name.", "unique_addresses": ""}
+        for box, key in ((self.resolve_all, "resolve_all"), (self.unique, "unique_addresses")):
+            capability = env.capabilities.get(key) if env is not None else None
+            unsupported = capability is not None and capability.available is False
+            # A value loaded from a profile stays editable so it can be cleared; the preview explains the problem.
+            box.setEnabled(not unsupported or box.isChecked())
+            box.setToolTip(capability.detail if unsupported else defaults[key])
 
 
 class DetectionTab(OptionTab):
@@ -1028,6 +1048,21 @@ class AdvancedTab(OptionTab):
 
     def __init__(self, parent: Optional[QWidget] = None) -> None:
         super().__init__(parent)
+        box, layout = self.group("Data files")
+        layout.addWidget(hint(
+            "Leave these empty to let Nmap search its usual folders, starting with the data directory set under Settings, Nmap. "
+            "Set them to scan with customised service or version databases."
+        ))
+        form = form_layout()
+        self.data_directory = TextField("Folder with nmap-services, nmap-os-db, scripts... (--datadir)")
+        form.addRow("Data directory", _file_row(self.data_directory, "Nmap data directory", self, directory=True))
+        self.services_file = TextField("Custom nmap-services file (--servicedb)")
+        self.services_file.setToolTip("Nmap then scans the ports listed in this file, as with fast mode, so leave the port selection at its default.")
+        form.addRow("Services file", _file_row(self.services_file, "Services file", self))
+        self.version_file = TextField("Custom nmap-service-probes file (--versiondb)")
+        form.addRow("Version probes", _file_row(self.version_file, "Version probes file", self))
+        layout.addLayout(form)
+
         box, layout = self.group("Additional Nmap arguments")
         layout.addWidget(hint(
             "Anything typed here is passed to Nmap exactly as tokenised below, after the options chosen on the other tabs. "
@@ -1065,9 +1100,17 @@ class AdvancedTab(OptionTab):
 
     def load(self, config: ScanConfiguration) -> None:
         self.arguments.setText(config.advanced_arguments)
+        self.data_directory.setText(config.data_files.data_directory or "")
+        self.services_file.setText(config.data_files.services_file or "")
+        self.version_file.setText(config.data_files.version_probes_file or "")
 
     def dump(self, data: dict[str, Any]) -> None:
         data["advanced_arguments"] = self.arguments.text().strip()
+        data["data_files"] = {
+            "data_directory": self.data_directory.text().strip() or None,
+            "services_file": self.services_file.text().strip() or None,
+            "version_probes_file": self.version_file.text().strip() or None,
+        }
 
 
 def describe_target_scope(text: str) -> tuple[str, Optional[str]]:

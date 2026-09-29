@@ -10,6 +10,7 @@ across fields in ``validate_configuration``.
 from __future__ import annotations
 
 from enum import Enum
+from pathlib import Path
 from typing import Optional
 
 from pydantic import BaseModel, ConfigDict, Field, field_validator
@@ -200,6 +201,8 @@ class DnsOptions(StrictModel):
     resolution: DnsResolutionMode = DnsResolutionMode.DEFAULT
     servers: list[str] = Field(default_factory=list)
     use_system_resolver: bool = False
+    resolve_all: bool = False
+    unique_addresses: bool = False
 
     @field_validator("servers")
     @classmethod
@@ -396,6 +399,34 @@ class NetworkOptions(StrictModel):
         return value
 
 
+def _clean_path(value: Optional[str]) -> Optional[str]:
+    if value is None or not value.strip():
+        return None
+    value = value.strip()
+    if any(ord(c) < 32 for c in value):
+        raise ValueError("paths cannot contain control characters")
+    if len(value) > 1024:
+        raise ValueError("path is too long")
+    return value
+
+
+class DataFileOptions(StrictModel):
+    """Where Nmap reads its databases from (--datadir, --servicedb, --versiondb)."""
+
+    data_directory: Optional[str] = None
+    services_file: Optional[str] = None
+    version_probes_file: Optional[str] = None
+
+    @field_validator("data_directory", "services_file", "version_probes_file")
+    @classmethod
+    def _validate_path(cls, value: Optional[str]) -> Optional[str]:
+        return _clean_path(value)
+
+    @property
+    def active(self) -> bool:
+        return bool(self.data_directory or self.services_file or self.version_probes_file)
+
+
 class OutputOptions(StrictModel):
     verbosity: int = Field(default=1, ge=0, le=4)
     debugging: int = Field(default=0, ge=0, le=9)
@@ -428,6 +459,7 @@ class ScanConfiguration(StrictModel):
     timing: TimingOptions = Field(default_factory=TimingOptions)
     evasion: EvasionOptions = Field(default_factory=EvasionOptions)
     network: NetworkOptions = Field(default_factory=NetworkOptions)
+    data_files: DataFileOptions = Field(default_factory=DataFileOptions)
     output: OutputOptions = Field(default_factory=OutputOptions)
     advanced_arguments: str = ""
 
@@ -516,6 +548,22 @@ def validate_configuration(config: ScanConfiguration) -> list[ValidationIssue]:
 
     if config.dns.resolution == DnsResolutionMode.NEVER and config.dns.servers:
         warning("Custom DNS servers are ignored when name resolution is disabled.")
+
+    files = config.data_files
+    if files.services_file:
+        # Nmap turns on fast mode for --servicedb (nmap.cc), scanning the ports that file lists.
+        if tech.mode != ScanMode.PORT_SCAN:
+            error("A custom services file only applies to port scans.", "Clear the services file or switch to a port scan.")
+        elif config.ports.mode not in (PortSelectionMode.DEFAULT, PortSelectionMode.FAST):
+            error(
+                "A custom services file makes Nmap scan the ports that file lists, so it cannot be combined with other port choices.",
+                "Set the port selection back to Nmap's default, or clear the services file.",
+            )
+    if files.data_directory and not Path(files.data_directory).expanduser().is_dir():
+        error(f"The data directory {files.data_directory} does not exist.", "Pick an existing folder or clear the field.")
+    for value, what in ((files.services_file, "services file"), (files.version_probes_file, "version probes file")):
+        if value and not Path(value).expanduser().is_file():
+            error(f"The {what} {value} does not exist.", "Pick an existing file or clear the field.")
 
     timing = config.timing
     if timing.min_rate and timing.max_rate and timing.min_rate > timing.max_rate:

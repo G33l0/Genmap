@@ -40,6 +40,7 @@ from genmap.errors import GenmapError
 from genmap.nmap.command_builder import CommandPlan, build_command_plan
 from genmap.nmap.environment import NmapEnvironment
 from genmap.nmap.locator import EXECUTABLE_NAME
+from genmap.nmap.requirements import environment_warnings
 from genmap.ui.app_context import AppContext
 from genmap.ui.pages.base import BasePage
 from genmap.ui.pages.new_scan.confirm_dialog import ConfirmScanDialog
@@ -50,6 +51,7 @@ from genmap.ui.widgets.common import PageHeader, label, set_status
 from genmap.ui.widgets.error_dialog import show_exception
 from genmap.ui.widgets.inputs import EnumCombo, TextField
 from genmap.ui.widgets.name_dialog import NameDialog
+from genmap.ui.widgets.responsive import FlowLayout
 
 log = logging.getLogger(__name__)
 
@@ -77,14 +79,20 @@ class NewScanPage(BasePage):
         outer.setContentsMargins(28, 22, 28, 18)
         outer.setSpacing(12)
 
-        header_row = QHBoxLayout()
-        header_row.addWidget(PageHeader("New Scan", "Choose targets, adjust options, and review the exact Nmap command before it runs."), 1)
-        header_row.addWidget(label("Profile", role="muted"))
+        outer.addWidget(PageHeader("New Scan", "Choose targets, adjust options, and review the exact Nmap command before it runs."))
+        # A flow layout lets the profile controls wrap instead of squeezing the page title on narrow windows.
+        header_row = FlowLayout()
+        profile_box = QWidget()
+        profile_layout = QHBoxLayout(profile_box)
+        profile_layout.setContentsMargins(0, 0, 0, 0)
+        profile_layout.setSpacing(8)
+        profile_layout.addWidget(label("Profile", role="muted"))
         self.profile_combo = EnumCombo([])
         self.profile_combo.setMinimumWidth(200)
         self.profile_combo.setToolTip("Load a saved profile. Your targets are kept.")
         self.profile_combo.activated.connect(self._on_profile_chosen)
-        header_row.addWidget(self.profile_combo)
+        profile_layout.addWidget(self.profile_combo)
+        header_row.addWidget(profile_box)
         reset = QPushButton("Reset")
         reset.setToolTip("Reload the selected profile, keeping the targets.")
         reset.clicked.connect(lambda: self._on_profile_chosen(self.profile_combo.currentIndex()))
@@ -448,11 +456,15 @@ class NewScanPage(BasePage):
                     config,
                     xml_output=_PREVIEW_XML,
                     stats_interval=self.context.engine.stats_interval,
+                    data_directory=self.context.engine.data_directory,
                 )
             except GenmapError as exc:
                 self._issues.append(ValidationIssue(severity="error", message=exc.message, remedy=exc.remedy))
             else:
                 self._issues.extend(ValidationIssue(severity="warning", message=w) for w in self._plan.warnings)
+                self._issues.extend(
+                    ValidationIssue(severity="warning", message=w) for w in environment_warnings(config, self.context.environment)
+                )
                 for notice in self._notices(config):
                     self._issues.append(ValidationIssue(severity="notice", message=notice.message))
 
@@ -537,12 +549,7 @@ class NewScanPage(BasePage):
         config = self._current
         env = self.context.environment
         notices = self._notices(config)
-        env_warnings: list[str] = []
-        if env is not None:
-            raw = env.capabilities.get("raw_packets")
-            needs_raw = config.techniques.uses_raw_packets or config.os_detection.enabled or config.aggressive
-            if needs_raw and raw is not None and raw.available is False:
-                env_warnings.append("Raw packet access looks unavailable, so Nmap will probably refuse this scan: " + raw.detail)
+        env_warnings = environment_warnings(config, env)
         if self.context.settings.general.confirm_intrusive_scans or notices or env_warnings:
             dialog = ConfirmScanDialog(
                 self,

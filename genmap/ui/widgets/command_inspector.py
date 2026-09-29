@@ -25,6 +25,7 @@ from genmap.core.scan_config import ScanConfiguration
 from genmap.nmap.command_builder import CommandPlan
 from genmap.nmap.environment import NmapEnvironment
 from genmap.nmap.privileges import privilege_label
+from genmap.nmap.requirements import environment_warnings
 from genmap.ui.widgets.common import KeyValueGrid, hint, label
 
 
@@ -47,10 +48,13 @@ def environment_notes(env: Optional[NmapEnvironment], config: ScanConfiguration)
         notes.append(f"Packet capture: {env.capture_driver.name} ({env.capture_driver.status.value.replace('_', ' ')}).")
     raw = env.capabilities.get("raw_packets")
     if config.techniques.uses_raw_packets or config.os_detection.enabled or config.aggressive:
-        if raw is not None and raw.available is not True:
-            notes.append("This configuration needs raw packet access, which may be unavailable: " + raw.detail)
-        else:
+        if raw is not None and raw.available is None:
+            notes.append("This configuration needs raw packet access, which Genmap could not confirm: " + raw.detail)
+        elif raw is None or raw.available:
             notes.append("This configuration uses raw packets.")
+    notes.extend(environment_warnings(config, env))
+    if env.configured_data_directory is not None:
+        notes.append(f"Nmap reads its data files from {env.configured_data_directory} first (Settings, Nmap).")
     notes.append("Nmap is launched directly with an argument list; no shell interprets the command.")
     if sys.platform.startswith("win"):
         notes.append("The displayed command uses Windows quoting and can be pasted into Command Prompt.")

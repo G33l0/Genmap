@@ -166,6 +166,10 @@ def build_user_arguments(config: ScanConfiguration) -> tuple[list[str], list[str
         args.extend(["--dns-servers", ",".join(dns.servers)])
     if dns.use_system_resolver:
         args.append("--system-dns")
+    if dns.resolve_all:
+        args.append("--resolve-all")
+    if dns.unique_addresses:
+        args.append("--unique")
 
     if config.aggressive:
         args.append("-A")
@@ -283,6 +287,14 @@ def build_user_arguments(config: ScanConfiguration) -> tuple[list[str], list[str
     elif net.privileged is False:
         args.append("--unprivileged")
 
+    files = config.data_files
+    if files.data_directory:
+        args.extend(["--datadir", files.data_directory])
+    if files.services_file:
+        args.extend(["--servicedb", files.services_file])
+    if files.version_probes_file:
+        args.extend(["--versiondb", files.version_probes_file])
+
     out = config.output
     if out.verbosity:
         args.append("-" + "v" * out.verbosity)
@@ -328,6 +340,7 @@ def build_command_plan(
     stats_interval: Optional[str] = None,
     noninteractive: bool = False,
     working_directory: Optional[Path] = None,
+    data_directory: Optional[Path] = None,
 ) -> CommandPlan:
     """Assemble the full plan including the arguments Genmap adds itself."""
     user_args, warnings = build_user_arguments(config)
@@ -339,6 +352,13 @@ def build_command_plan(
             ManagedArgument(
                 ["--stats-every", stats_interval],
                 "Periodic progress lines drive the live progress display.",
+            )
+        )
+    if data_directory is not None and not config.data_files.data_directory:
+        managed.append(
+            ManagedArgument(
+                ["--datadir", str(data_directory)],
+                "The data directory chosen under Settings, Nmap, so Nmap reads the same scripts and databases Genmap shows.",
             )
         )
     if noninteractive:

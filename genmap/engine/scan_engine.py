@@ -321,6 +321,7 @@ class ScanEngine(QObject):
         self.stats_interval: Optional[str] = "2s"
         self.timeout_seconds = 0
         self.keep_console_logs = True
+        self.data_directory: Optional[Path] = None
 
     @property
     def active_jobs(self) -> list[ScanJob]:
@@ -345,6 +346,7 @@ class ScanEngine(QObject):
             xml_output=xml_output,
             stats_interval=self.stats_interval,
             noninteractive=False,
+            data_directory=self.data_directory,
         )
 
     def start(
