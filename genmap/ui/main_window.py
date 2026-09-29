@@ -24,7 +24,6 @@ from PyQt6.QtWidgets import (
 
 from genmap import APP_NAME, __version__
 from genmap.core.diagnostics import DiagnosticLevel
-from genmap.core.presets import preset_by_key
 from genmap.core.scan_config import ScanConfiguration
 from genmap.core.targets import split_target_text
 from genmap.engine.scan_engine import ScanJob
@@ -36,6 +35,8 @@ from genmap.ui.pages.dashboard import DashboardPage
 from genmap.ui.pages.history import HistoryPage
 from genmap.ui.pages.modules import ModulesPage
 from genmap.ui.pages.new_scan import NewScanPage
+from genmap.ui.pages.profiles import ProfilesPage
+from genmap.ui.pages.targets import TargetsPage
 from genmap.ui.pages.results import ResultsPage
 from genmap.ui.pages.scan_monitor import ScanMonitorPage
 from genmap.ui.pages.settings import SettingsPage
@@ -53,8 +54,8 @@ NAV_ENTRIES = [
     NavEntry("scan_monitor", "Live Scan", "The scan running now or most recently"),
     NavEntry("results", "Results", "Browse hosts, ports, and script output"),
     NavEntry("history", "Scan History", "Previous scans (Ctrl+H)"),
-    NavEntry("targets", "Targets", "Saved target groups: planned for the next phase", enabled=False),
-    NavEntry("profiles", "Profiles", "Saved scan profiles: planned for the next phase", enabled=False),
+    NavEntry("targets", "Targets", "Saved target groups and recently scanned targets"),
+    NavEntry("profiles", "Profiles", "Reusable scan configurations"),
     NavEntry("nse", "NSE", "Script browser: planned for the next phase", enabled=False),
     NavEntry("topology", "Topology", "Traceroute based map: planned for a later phase", enabled=False),
     NavEntry("reports", "Reports", "HTML reports: planned for the next phase", enabled=False),
@@ -118,10 +119,12 @@ class MainWindow(QMainWindow):
         self.monitor = ScanMonitorPage(context)
         self.results = ResultsPage(context)
         self.history = HistoryPage(context)
+        self.profiles_page = ProfilesPage(context)
+        self.targets_page = TargetsPage(context)
         self.modules = ModulesPage(context)
         self.settings_page = SettingsPage(context)
         self.pages: dict[str, BasePage] = {}
-        for page in (self.dashboard, self.new_scan, self.monitor, self.results, self.history, self.modules, self.settings_page):
+        for page in (self.dashboard, self.new_scan, self.monitor, self.results, self.history, self.targets_page, self.profiles_page, self.modules, self.settings_page):
             self.pages[page.page_key] = page
             self.stack.addWidget(page)
         self._current_key: Optional[str] = None
@@ -153,6 +156,10 @@ class MainWindow(QMainWindow):
         self.history.monitor_requested.connect(lambda _run_id: self.show_page("scan_monitor"))
         self.history.duplicate_requested.connect(self._edit_configuration)
         self.history.rerun_requested.connect(self._rerun_configuration)
+        self.profiles_page.use_profile_requested.connect(self._use_profile)
+        self.profiles_page.edit_profile_requested.connect(self._use_profile)
+        self.targets_page.scan_targets_requested.connect(self._scan_targets)
+        self.new_scan.save_targets_requested.connect(self._save_targets_as_group)
 
     def _build_menus(self) -> None:
         bar = self.menuBar()
@@ -173,7 +180,7 @@ class MainWindow(QMainWindow):
         self._action(scan_menu, "Show &Live Scan", "Ctrl+L", lambda: self.show_page("scan_monitor"))
 
         view_menu = bar.addMenu("&View")
-        shortcuts = {"dashboard": "Ctrl+1", "new_scan": "Ctrl+2", "scan_monitor": "Ctrl+3", "results": "Ctrl+4", "history": "Ctrl+H", "modules": None, "settings": "Ctrl+,"}
+        shortcuts = {"dashboard": "Ctrl+1", "new_scan": "Ctrl+2", "scan_monitor": "Ctrl+3", "results": "Ctrl+4", "history": "Ctrl+H", "profiles": "Ctrl+P", "settings": "Ctrl+,"}
         for entry in NAV_ENTRIES:
             if entry.key in self.pages:
                 self._action(view_menu, entry.title, shortcuts.get(entry.key), lambda _c=False, k=entry.key: self.show_page(k))
@@ -260,19 +267,25 @@ class MainWindow(QMainWindow):
         self.show_page("results")
         self.results.import_xml(path)
 
-    def _quick_scan(self, targets: str, preset_key: str) -> None:
-        self._configure_scan(targets, preset_key)
+    def _quick_scan(self, targets: str, profile_id) -> None:
+        self._configure_scan(targets, profile_id)
         if split_target_text(targets):
             self.new_scan.start_scan()
 
-    def _configure_scan(self, targets: str, preset_key: str) -> None:
-        preset = preset_by_key(preset_key)
-        config = preset.build()
-        config.targets.targets = []
-        config.output.verbosity = max(config.output.verbosity, self.context.settings.scanning.default_verbosity)
-        self.new_scan.preset.set_current_value(preset.key)
-        self.new_scan.load_configuration(config, starting_point=preset.name)
+    def _configure_scan(self, targets: str, profile_id) -> None:
+        self.new_scan.apply_profile(profile_id, keep_targets=False)
         self.new_scan.set_targets(targets)
+        self.show_page("new_scan")
+
+    def _scan_targets(self, targets: list, exclusions: list) -> None:
+        self.new_scan.set_target_spec(targets, exclusions)
+        self.show_page("new_scan")
+
+    def _save_targets_as_group(self, targets: list, exclusions: list) -> None:
+        self.targets_page.create_group(targets, exclusions, title="Save targets as group")
+
+    def _use_profile(self, profile_id) -> None:
+        self.new_scan.apply_profile(profile_id, keep_targets=True)
         self.show_page("new_scan")
 
     def _edit_configuration(self, config: ScanConfiguration) -> None:
@@ -387,6 +400,20 @@ class MainWindow(QMainWindow):
                 QMessageBox.StandardButton.No,
             )
             if answer != QMessageBox.StandardButton.Yes:
+                event.ignore()
+                return
+        if self.targets_page.has_unsaved_changes():
+            answer = QMessageBox.question(
+                self,
+                "Unsaved target group",
+                "Save the changes to the open target group before exiting?",
+                QMessageBox.StandardButton.Save | QMessageBox.StandardButton.Discard | QMessageBox.StandardButton.Cancel,
+                QMessageBox.StandardButton.Save,
+            )
+            if answer == QMessageBox.StandardButton.Cancel:
+                event.ignore()
+                return
+            if answer == QMessageBox.StandardButton.Save and not self.targets_page._save():
                 event.ignore()
                 return
         if self.settings_page.has_unsaved_changes():

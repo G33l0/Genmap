@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 from typing import Optional
 
 from PyQt6.QtCore import Qt, pyqtSignal
@@ -17,7 +18,6 @@ from PyQt6.QtWidgets import (
 
 from genmap import __version__
 from genmap.core.diagnostics import DiagnosticLevel
-from genmap.core.presets import PRESETS, preset_by_key
 from genmap.engine.run_store import RunStatus
 from genmap.nmap.environment import NmapEnvironment
 from genmap.nmap.npcap import CaptureDriverStatus
@@ -25,10 +25,13 @@ from genmap.nmap.privileges import privilege_label
 from genmap.resources import logo_pixmap
 from genmap.ui.app_context import AppContext
 from genmap.ui.pages.base import ScrollPage
+from genmap.ui.pages.history import status_label
 from genmap.ui.pages.scan_monitor import format_duration
 from genmap.ui.widgets.common import Card, KeyValueGrid, Metric, label, set_status
 from genmap.ui.widgets.inputs import EnumCombo, TextField
 from genmap.ui.widgets.responsive import ResponsiveGrid
+
+log = logging.getLogger(__name__)
 
 _LEVEL_STATUS = {
     DiagnosticLevel.OK: "ok",
@@ -42,8 +45,8 @@ class DashboardPage(ScrollPage):
     page_key = "dashboard"
     page_title = "Dashboard"
 
-    quick_scan_requested = pyqtSignal(str, str)  # targets, preset key
-    configure_scan_requested = pyqtSignal(str, str)
+    quick_scan_requested = pyqtSignal(str, object)  # targets, profile id or None
+    configure_scan_requested = pyqtSignal(str, object)
     open_run_requested = pyqtSignal(str)
     navigate_requested = pyqtSignal(str)
 
@@ -72,9 +75,8 @@ class DashboardPage(ScrollPage):
         self.quick_targets.returnPressed.connect(self._quick_scan)
         self.quick_card.add_widget(self.quick_targets)
         quick_row = QHBoxLayout()
-        self.quick_preset = EnumCombo([(p.name, p.key) for p in PRESETS])
-        for index, preset in enumerate(PRESETS):
-            self.quick_preset.setItemData(index, preset.description, Qt.ItemDataRole.ToolTipRole)
+        self.quick_preset = EnumCombo([])
+        self.quick_preset.setToolTip("Profile to scan with")
         self.quick_preset.currentIndexChanged.connect(self._update_preset_hint)
         quick_row.addWidget(self.quick_preset, 1)
         self.configure_button = QPushButton("Configure...")
@@ -90,7 +92,8 @@ class DashboardPage(ScrollPage):
         self.quick_card.add_widget(self.preset_hint)
         self.quick_card.add_widget(label("Only scan networks and hosts you own or are authorized to test.", role="small", wrap=True))
         self.quick_card.add_stretch()
-        self._update_preset_hint()
+        self._descriptions: dict[object, str] = {}
+        self._load_profiles()
         self.grid.add(self.quick_card)
 
         self.env_card = Card("Nmap environment", actions=[self._link_button("Details", lambda: self.navigate_requested.emit("settings"))])
@@ -136,6 +139,24 @@ class DashboardPage(ScrollPage):
         self.recent_card.add_stretch()
         self.grid.add(self.recent_card)
 
+        self.library_card = Card("Library")
+        library = QGridLayout()
+        library.setSpacing(10)
+        self.lib_profiles = Metric("Saved profiles", "-")
+        self.lib_groups = Metric("Target groups", "-")
+        self.lib_hosts = Metric("Known hosts", "-")
+        self.lib_hosts.setToolTip("Distinct addresses Nmap reported as up across all indexed scans.")
+        self.lib_scans = Metric("Scans stored", "-")
+        for column, metric in enumerate((self.lib_profiles, self.lib_groups, self.lib_hosts, self.lib_scans)):
+            library.addWidget(metric, 0, column)
+        self.library_card.add_layout(library)
+        links = QHBoxLayout()
+        for text, key in (("Profiles", "profiles"), ("Targets", "targets"), ("NSE scripts", "nse"), ("Reports", "reports")):
+            links.addWidget(self._link_button(text, lambda _c=False, k=key: self.navigate_requested.emit(k)))
+        links.addStretch(1)
+        self.library_card.add_layout(links)
+        self.grid.add(self.library_card, span=2)
+
         self.health_card = Card("Application")
         self.health = KeyValueGrid()
         self.health.add_row("Version", __version__)
@@ -148,8 +169,10 @@ class DashboardPage(ScrollPage):
 
         context.environment_changed.connect(self._show_environment)
         context.environment_probe_started.connect(self._probe_started)
-        context.engine.job_finished.connect(lambda _job: self._refresh_runs())
-        context.engine.job_started.connect(lambda _job: self._refresh_runs())
+        context.index_changed.connect(self._refresh_if_visible)
+        context.profiles_changed.connect(self._load_profiles)
+        context.profiles_changed.connect(self._refresh_if_visible)
+        context.target_groups_changed.connect(self._refresh_if_visible)
 
     def _link_button(self, text: str, slot) -> QPushButton:
         button = QPushButton(text)
@@ -161,6 +184,31 @@ class DashboardPage(ScrollPage):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self.logo.setPixmap(logo_pixmap(56, self.devicePixelRatioF()))
+
+    def _refresh_if_visible(self) -> None:
+        if self.isVisible():
+            self._refresh_runs()
+
+    def _load_profiles(self) -> None:
+        current = self.quick_preset.current_value() if self.quick_preset.count() else "unset"
+        try:
+            profiles = self.context.profiles.list()
+        except Exception:
+            profiles = []
+        self.quick_preset.blockSignals(True)
+        self.quick_preset.clear()
+        self._descriptions = {None: "Nmap's defaults: the top 1000 TCP ports with its default technique."}
+        self.quick_preset.addItem("No profile (Nmap defaults)", None)
+        for profile in profiles:
+            self.quick_preset.addItem(profile.name, profile.id)
+            self._descriptions[profile.id] = profile.description
+        if current == "unset":
+            default = next((p.id for p in profiles if p.builtin_key == "default"), None)
+            self.quick_preset.set_current_value(default)
+        else:
+            self.quick_preset.set_current_value(current)
+        self.quick_preset.blockSignals(False)
+        self._update_preset_hint()
 
     def on_shown(self) -> None:
         self._refresh_runs()
@@ -179,13 +227,13 @@ class DashboardPage(ScrollPage):
         self.quick_targets.setFocus()
 
     def _update_preset_hint(self) -> None:
-        self.preset_hint.setText(preset_by_key(self.quick_preset.current_value()).description)
+        self.preset_hint.setText(self._descriptions.get(self.quick_preset.current_value(), ""))
 
     def _quick_scan(self) -> None:
-        self.quick_scan_requested.emit(self.quick_targets.text().strip(), str(self.quick_preset.current_value()))
+        self.quick_scan_requested.emit(self.quick_targets.text().strip(), self.quick_preset.current_value())
 
     def _configure(self) -> None:
-        self.configure_scan_requested.emit(self.quick_targets.text().strip(), str(self.quick_preset.current_value()))
+        self.configure_scan_requested.emit(self.quick_targets.text().strip(), self.quick_preset.current_value())
 
     def _probe_started(self) -> None:
         self.env_status.setText("Checking the Nmap installation...")
@@ -230,23 +278,37 @@ class DashboardPage(ScrollPage):
         self.quick_button.setToolTip("" if env.usable else "Nmap is not available. See Settings, Nmap.")
 
     def _refresh_runs(self) -> None:
-        records = self.context.run_store.list_runs(limit=6)
+        try:
+            scans = self.context.scan_index.list_scans(limit=6)
+            stats = self.context.scan_index.stats()
+            profile_count = len(self.context.profiles.list())
+            group_count = len(self.context.target_groups.list())
+        except Exception:
+            log.exception("Dashboard data could not be loaded")
+            return
+        self.lib_profiles.set_value(str(profile_count))
+        self.lib_groups.set_value(str(group_count))
+        self.lib_hosts.set_value(str(stats.distinct_hosts))
+        self.lib_scans.set_value(str(stats.scans))
         while self.recent_box.count():
             item = self.recent_box.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
-        if not records:
+        if not scans:
             self.recent_box.addWidget(label("Scans you run will be listed here.", role="muted"))
-        for record in records:
-            row = QPushButton(f"{record.created_at.strftime('%b %d %H:%M')}   {record.target_summary}   •  {record.status.label}")
+        for scan in scans:
+            when = scan.created_at.astimezone().strftime("%b %d %H:%M")
+            row = QPushButton(f"{when}   {scan.target_summary}   \u2022  {status_label(scan.status)}")
             row.setProperty("flat", True)
             row.setStyleSheet("text-align: left;")
             row.setCursor(Qt.CursorShape.PointingHandCursor)
-            row.setToolTip(record.command.display if record.command else "")
-            row.clicked.connect(lambda _checked=False, run_id=record.run_id: self.open_run_requested.emit(run_id))
+            row.setToolTip(scan.command_display or "")
+            row.setEnabled(not scan.folder_missing)
+            row.clicked.connect(lambda _checked=False, run_id=scan.run_id: self.open_run_requested.emit(run_id))
             self.recent_box.addWidget(row)
 
-        finished = next((r for r in records if r.status.is_terminal), None)
+        terminal = {s.value for s in RunStatus if s.is_terminal}
+        finished = next((s for s in scans if s.status in terminal and not s.folder_missing), None)
         self._last_run_id = finished.run_id if finished else None
         self.last_open.setEnabled(finished is not None)
         if finished is None:
@@ -254,20 +316,21 @@ class DashboardPage(ScrollPage):
             self.last_detail.setText("Run a quick scan to see a summary here.")
             for metric in (self.last_hosts, self.last_ports, self.last_services):
                 metric.set_value("-")
+            set_status(self.last_title, None)
             return
         self.last_title.setText(finished.target_summary)
-        duration = finished.duration_seconds
-        parts = [finished.status.label, finished.created_at.strftime("%Y-%m-%d %H:%M")]
-        if duration is not None:
-            parts.append(f"took {format_duration(duration)}")
+        parts = [status_label(finished.status), finished.created_at.astimezone().strftime("%Y-%m-%d %H:%M")]
+        if finished.started_at and finished.finished_at:
+            parts.append(f"took {format_duration((finished.finished_at - finished.started_at).total_seconds())}")
         if finished.profile_name:
             parts.append(finished.profile_name)
-        self.last_detail.setText("  •  ".join(parts))
-        summary = finished.summary
-        self.last_hosts.set_value(f"{summary.hosts_up}/{summary.hosts_total}" if summary else "-")
-        self.last_ports.set_value(str(summary.open_ports) if summary else "-")
-        self.last_services.set_value(str(summary.services) if summary else "-")
-        set_status(self.last_title, "error" if finished.status in (RunStatus.FAILED, RunStatus.CRASHED) else None)
+        self.last_detail.setText("  \u2022  ".join(parts))
+        has_counts = finished.results_indexed or finished.hosts_total
+        self.last_hosts.set_value(f"{finished.hosts_up}/{finished.hosts_total}" if has_counts else "-")
+        self.last_ports.set_value(str(finished.open_ports) if has_counts else "-")
+        self.last_services.set_value(str(finished.services) if has_counts else "-")
+        failed = {RunStatus.FAILED.value, RunStatus.CRASHED.value}
+        set_status(self.last_title, "error" if finished.status in failed else None)
 
     def _open_last(self) -> None:
         if self._last_run_id:

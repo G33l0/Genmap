@@ -15,18 +15,21 @@ from PyQt6.QtWidgets import (
     QLabel,
     QListWidget,
     QListWidgetItem,
+    QMenu,
+    QMessageBox,
     QPlainTextEdit,
     QPushButton,
     QSplitter,
     QTabWidget,
+    QToolButton,
     QVBoxLayout,
     QWidget,
 )
 
 from genmap.core.intrusiveness import assess_intrusiveness
-from genmap.core.presets import PRESETS, preset_by_key
 from genmap.core.scan_config import (
     ScanConfiguration,
+    TargetSpecification,
     ValidationIssue,
     has_errors,
     issues_from_validation_error,
@@ -40,11 +43,13 @@ from genmap.nmap.locator import EXECUTABLE_NAME
 from genmap.ui.app_context import AppContext
 from genmap.ui.pages.base import BasePage
 from genmap.ui.pages.new_scan.confirm_dialog import ConfirmScanDialog
-from genmap.ui.pages.new_scan.option_tabs import ALL_TABS, OptionTab, describe_target_scope
+from genmap.storage.profiles import strip_targets
+from genmap.ui.pages.new_scan.option_tabs import ALL_TABS, OptionTab, TargetsTab, describe_target_scope
 from genmap.ui.widgets.command_inspector import CommandInspectorDialog
 from genmap.ui.widgets.common import PageHeader, label, set_status
 from genmap.ui.widgets.error_dialog import show_exception
 from genmap.ui.widgets.inputs import EnumCombo, TextField
+from genmap.ui.widgets.name_dialog import NameDialog
 
 log = logging.getLogger(__name__)
 
@@ -56,6 +61,7 @@ class NewScanPage(BasePage):
     page_title = "New Scan"
 
     scan_started = pyqtSignal(object)  # ScanJob
+    save_targets_requested = pyqtSignal(list, list)  # targets, exclusions
 
     def __init__(self, context: AppContext, parent: Optional[QWidget] = None) -> None:
         super().__init__(context, parent)
@@ -64,7 +70,8 @@ class NewScanPage(BasePage):
         self._issues: list[ValidationIssue] = []
         self._plan: Optional[CommandPlan] = None
         self._loading = False
-        self._starting_point = PRESETS[0].name
+        self._starting_point = "Nmap defaults"
+        self._profile_id: Optional[int] = None
 
         outer = QVBoxLayout(self)
         outer.setContentsMargins(28, 22, 28, 18)
@@ -72,17 +79,24 @@ class NewScanPage(BasePage):
 
         header_row = QHBoxLayout()
         header_row.addWidget(PageHeader("New Scan", "Choose targets, adjust options, and review the exact Nmap command before it runs."), 1)
-        header_row.addWidget(label("Start from", role="muted"))
-        self.preset = EnumCombo([(p.name, p.key) for p in PRESETS])
-        self.preset.setToolTip("Load a built in starting configuration. Your targets are kept.")
-        for index, preset in enumerate(PRESETS):
-            self.preset.setItemData(index, preset.description, Qt.ItemDataRole.ToolTipRole)
-        self.preset.activated.connect(self._on_preset_chosen)
-        header_row.addWidget(self.preset)
+        header_row.addWidget(label("Profile", role="muted"))
+        self.profile_combo = EnumCombo([])
+        self.profile_combo.setMinimumWidth(200)
+        self.profile_combo.setToolTip("Load a saved profile. Your targets are kept.")
+        self.profile_combo.activated.connect(self._on_profile_chosen)
+        header_row.addWidget(self.profile_combo)
         reset = QPushButton("Reset")
-        reset.setToolTip("Restore the selected starting point, keeping the targets.")
-        reset.clicked.connect(lambda: self._on_preset_chosen(self.preset.currentIndex()))
+        reset.setToolTip("Reload the selected profile, keeping the targets.")
+        reset.clicked.connect(lambda: self._on_profile_chosen(self.profile_combo.currentIndex()))
         header_row.addWidget(reset)
+        self.save_profile_button = QPushButton("Save as profile...")
+        self.save_profile_button.setToolTip("Save these options as a new profile. Targets are not included.")
+        self.save_profile_button.clicked.connect(self.save_as_profile)
+        header_row.addWidget(self.save_profile_button)
+        self.update_profile_button = QPushButton("Update profile")
+        self.update_profile_button.setToolTip("Store the current options in the selected profile.")
+        self.update_profile_button.clicked.connect(self.update_profile)
+        header_row.addWidget(self.update_profile_button)
         outer.addLayout(header_row)
 
         target_row = QHBoxLayout()
@@ -94,6 +108,15 @@ class NewScanPage(BasePage):
         target_label.setBuddy(self.targets)
         target_row.addWidget(target_label)
         target_row.addWidget(self.targets, 1)
+        self.groups_button = QToolButton()
+        self.groups_button.setText("Groups")
+        self.groups_button.setToolTip("Load a saved target group, or save these targets as one")
+        self.groups_button.setPopupMode(QToolButton.ToolButtonPopupMode.InstantPopup)
+        self.groups_button.setMinimumHeight(34)
+        self.groups_menu = QMenu(self.groups_button)
+        self.groups_menu.aboutToShow.connect(self._fill_groups_menu)
+        self.groups_button.setMenu(self.groups_menu)
+        target_row.addWidget(self.groups_button)
         outer.addLayout(target_row)
         self.target_status = label("Enter at least one target.", role="small")
         outer.addWidget(self.target_status)
@@ -172,15 +195,142 @@ class NewScanPage(BasePage):
         context.environment_changed.connect(self._on_environment_changed)
         context.engine.job_started.connect(lambda _job: self._update_start_enabled())
         context.engine.job_finished.connect(lambda _job: self._update_start_enabled())
-        self.load_configuration(self._initial_configuration(), starting_point=PRESETS[0].name)
+        context.profiles_changed.connect(self._reload_profiles)
+        self._reload_profiles()
+        default = next((p for p in self._profiles.values() if p.builtin_key == "default"), None)
+        if default is not None:
+            self.apply_profile(default.id, keep_targets=False)
+        else:
+            self.load_configuration(self._defaults(), starting_point="Nmap defaults")
 
-    def _initial_configuration(self) -> ScanConfiguration:
-        config = PRESETS[0].build()
+    def _defaults(self) -> ScanConfiguration:
+        config = ScanConfiguration()
         config.output.verbosity = self.context.settings.scanning.default_verbosity
         timeout = self.context.settings.nse.default_script_timeout
         if timeout:
             config.scripts.timeout = timeout
         return config
+
+    # Profiles ----------------------------------------------------------------
+
+    def _reload_profiles(self) -> None:
+        try:
+            profiles = self.context.profiles.list()
+        except Exception:
+            log.exception("Profiles could not be loaded")
+            profiles = []
+        self._profiles = {p.id: p for p in profiles}
+        self.profile_combo.blockSignals(True)
+        self.profile_combo.clear()
+        self.profile_combo.addItem("No profile (Nmap defaults)", None)
+        for profile in profiles:
+            self.profile_combo.addItem(profile.name, profile.id)
+            if profile.description:
+                self.profile_combo.setItemData(self.profile_combo.count() - 1, profile.description, Qt.ItemDataRole.ToolTipRole)
+        if self._profile_id not in self._profiles:
+            self._profile_id = None
+        self.profile_combo.set_current_value(self._profile_id)
+        self.profile_combo.blockSignals(False)
+        self._update_profile_buttons()
+
+    def _target_spec(self) -> dict:
+        data: dict[str, Any] = {}
+        self.option_tabs[ALL_TABS.index(TargetsTab)].dump(data)
+        data["targets"]["targets"] = split_target_text(self.targets.text())
+        return data["targets"]
+
+    def apply_profile(self, profile_id: Optional[int], *, keep_targets: bool = True) -> None:
+        spec = self._target_spec() if keep_targets else None
+        if profile_id is None or profile_id not in self._profiles:
+            config, name, profile_id = self._defaults(), "Nmap defaults", None
+        else:
+            profile = self._profiles[profile_id]
+            config, name = profile.configuration.model_copy(deep=True), profile.name
+        self._profile_id = profile_id
+        self.profile_combo.set_current_value(profile_id)
+        self.load_configuration(config, starting_point=name, profile_id=profile_id)
+        if spec is not None:
+            self._loading = True
+            try:
+                self.option_tabs[ALL_TABS.index(TargetsTab)].load(self._with_targets(config, spec))
+                self.targets.setText(", ".join(spec.get("targets", [])))
+            finally:
+                self._loading = False
+            self.refresh()
+
+    @staticmethod
+    def _with_targets(config: ScanConfiguration, spec: dict) -> ScanConfiguration:
+        clone = config.model_copy(deep=True)
+        try:
+            clone.targets = TargetSpecification.model_validate(spec)
+        except (ValidationError, GenmapError):
+            pass
+        return clone
+
+    def _on_profile_chosen(self, index: int) -> None:
+        self.apply_profile(self.profile_combo.itemData(index))
+
+    def _profile_differs(self) -> bool:
+        if self._profile_id is None or self._current is None or self._profile_id not in self._profiles:
+            return False
+        stored = self._profiles[self._profile_id].configuration
+        return strip_targets(self._current) != strip_targets(stored)
+
+    def _update_profile_buttons(self) -> None:
+        self.save_profile_button.setEnabled(self._current is not None)
+        differs = self._profile_differs()
+        self.update_profile_button.setEnabled(differs)
+        self.update_profile_button.setText("Update profile *" if differs else "Update profile")
+
+    def save_as_profile(self) -> None:
+        self.refresh()
+        if self._current is None:
+            return
+        repo = self.context.profiles
+
+        def validate(name: str) -> Optional[str]:
+            return f"A profile named \"{name}\" already exists." if repo.find_by_name(name) else None
+
+        dialog = NameDialog(
+            self,
+            "Save as profile",
+            name="" if self._profile_id is None else f"{self._starting_point} copy",
+            note="The profile keeps every option on these tabs. Targets are not saved in profiles; use target groups for those.",
+            validator=validate,
+        )
+        if dialog.exec() != NameDialog.DialogCode.Accepted:
+            return
+        name, description = dialog.values()
+        try:
+            profile = repo.create(name, self._current, description)
+        except GenmapError as exc:
+            show_exception(self, exc, "Profile not saved")
+            return
+        self._profile_id = profile.id
+        self._starting_point = profile.name
+        self.context.profiles_changed.emit()
+        self.refresh()
+
+    def update_profile(self) -> None:
+        if not self._profile_differs() or self._current is None:
+            return
+        profile = self._profiles[self._profile_id]
+        answer = QMessageBox.question(
+            self,
+            "Update profile",
+            f"Replace the options stored in \"{profile.name}\" with the ones on this page? Scans already run are not affected.",
+            QMessageBox.StandardButton.Yes | QMessageBox.StandardButton.No,
+            QMessageBox.StandardButton.No,
+        )
+        if answer != QMessageBox.StandardButton.Yes:
+            return
+        try:
+            self.context.profiles.update(profile.id, config=self._current)
+        except GenmapError as exc:
+            show_exception(self, exc, "Profile not updated")
+            return
+        self.context.profiles_changed.emit()
+        self.refresh()
 
     def on_shown(self) -> None:
         self._on_environment_changed(self.context.environment)
@@ -196,8 +346,18 @@ class NewScanPage(BasePage):
         if not self._loading:
             self._refresh_timer.start()
 
-    def load_configuration(self, config: ScanConfiguration, *, starting_point: Optional[str] = None, keep_targets: bool = False) -> None:
-        """Populate the form from a configuration (used by presets, history, and rerun)."""
+    def load_configuration(
+        self,
+        config: ScanConfiguration,
+        *,
+        starting_point: Optional[str] = None,
+        keep_targets: bool = False,
+        profile_id: Optional[int] = None,
+    ) -> None:
+        """Populate the form from a configuration (profiles, history, and rerun)."""
+        self._profile_id = profile_id if profile_id in getattr(self, "_profiles", {}) else None
+        if hasattr(self, "profile_combo"):
+            self.profile_combo.set_current_value(self._profile_id)
         self._loading = True
         try:
             if keep_targets:
@@ -216,14 +376,29 @@ class NewScanPage(BasePage):
     def set_targets(self, text: str) -> None:
         self.targets.setText(text)
 
-    def _on_preset_chosen(self, index: int) -> None:
-        preset = preset_by_key(self.preset.itemData(index))
-        config = preset.build()
-        config.output.verbosity = max(config.output.verbosity, 0)
-        current_targets = split_target_text(self.targets.text())
-        config.targets.targets = []
-        self.load_configuration(config, starting_point=preset.name)
-        self.targets.setText(", ".join(current_targets))
+    def set_target_spec(self, targets: list[str], exclusions: list[str]) -> None:
+        tab = self.option_tabs[ALL_TABS.index(TargetsTab)]
+        tab.exclusions.setText(", ".join(exclusions))
+        self.targets.setText(", ".join(targets))
+        self.refresh()
+
+    def _fill_groups_menu(self) -> None:
+        self.groups_menu.clear()
+        try:
+            groups = self.context.target_groups.list()
+        except Exception:
+            groups = []
+        for group in groups:
+            action = self.groups_menu.addAction(f"{group.name}  ({len(group.targets)})")
+            action.setToolTip(", ".join(group.targets[:10]))
+            action.triggered.connect(lambda _c=False, g=group: self.set_target_spec(g.targets, g.exclusions))
+        if not groups:
+            self.groups_menu.addAction("No saved groups yet").setEnabled(False)
+        self.groups_menu.addSeparator()
+        save = self.groups_menu.addAction("Save these targets as a group...")
+        spec = self._target_spec()
+        save.setEnabled(bool(spec.get("targets")))
+        save.triggered.connect(lambda: self.save_targets_requested.emit(list(spec.get("targets", [])), list(spec.get("exclusions", []))))
 
     def collect(self) -> tuple[Optional[ScanConfiguration], list[ValidationIssue]]:
         data: dict[str, Any] = self._config.model_dump(mode="json")
@@ -305,6 +480,7 @@ class NewScanPage(BasePage):
         if warnings:
             parts.append(f"{warnings} item{'s' if warnings != 1 else ''} to review")
         self.summary.setText(".  ".join(parts) + ".")
+        self._update_profile_buttons()
         self.copy_button.setEnabled(self._plan is not None)
         self.inspect_button.setEnabled(self._plan is not None)
         self._update_start_enabled()
@@ -368,7 +544,7 @@ class NewScanPage(BasePage):
             if dialog.exec() != ConfirmScanDialog.DialogCode.Accepted:
                 return
         try:
-            job = self.context.engine.start(config, profile_name=self._starting_point)
+            job = self.context.engine.start(config, profile_name=self._starting_point, profile_id=self._profile_id)
         except Exception as exc:
             show_exception(self, exc, "Scan could not be started")
             return

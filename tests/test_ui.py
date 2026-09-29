@@ -4,6 +4,10 @@ import shutil
 
 import pytest
 
+from genmap.ui.pages.new_scan.option_tabs import ALL_TABS
+
+ALL_TAB_INDEX = {cls.__name__: i for i, cls in enumerate(ALL_TABS)}
+
 from genmap.core.scan_config import PortSelectionMode
 from genmap.nmap.environment import NmapEnvironment
 from genmap.nmap.xml_parser import parse_nmap_xml_file
@@ -108,14 +112,58 @@ def test_category_checkboxes_sync_with_expression(window):
     assert not tab._category_checks["safe"].isChecked()
 
 
-def test_preset_keeps_targets(window):
+def test_profile_keeps_targets(window, context):
     page = window.new_scan
     page.set_targets("192.168.1.10")
-    index = next(i for i in range(page.preset.count()) if page.preset.itemData(i) == "full_tcp")
-    page.preset.setCurrentIndex(index)
-    page._on_preset_chosen(index)
+    page.option_tabs[ALL_TAB_INDEX["TargetsTab"]].exclusions.setText("192.168.1.1")
+    full = next(p for p in context.profiles.list() if p.builtin_key == "full_tcp")
+    index = next(i for i in range(page.profile_combo.count()) if page.profile_combo.itemData(i) == full.id)
+    page.profile_combo.setCurrentIndex(index)
+    page._on_profile_chosen(index)
     assert page.targets.text() == "192.168.1.10"
     assert page._current.ports.mode == PortSelectionMode.ALL
+    assert page._current.targets.exclusions == ["192.168.1.1"]
+    assert page._profile_id == full.id
+
+
+def test_save_and_update_profile_from_new_scan(window, context, monkeypatch):
+    from genmap.ui.widgets.name_dialog import NameDialog
+
+    page = window.new_scan
+    page.set_targets("10.0.0.1")
+    page.option_tabs[3].service.setChecked(True)
+    page.refresh()
+    monkeypatch.setattr(NameDialog, "exec", lambda self: NameDialog.DialogCode.Accepted)
+    monkeypatch.setattr(NameDialog, "values", lambda self: ("Web sweep", "Service detection"))
+    page.save_as_profile()
+    saved = context.profiles.find_by_name("Web sweep")
+    assert saved is not None and saved.configuration.service_detection.enabled
+    assert saved.configuration.targets.targets == []
+    assert page._profile_id == saved.id
+    assert not page.update_profile_button.isEnabled()
+
+    page.option_tabs[3].os.setChecked(True)
+    page.refresh()
+    assert page.update_profile_button.isEnabled()
+    from PyQt6.QtWidgets import QMessageBox
+
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
+    page.update_profile()
+    assert context.profiles.get(saved.id).configuration.os_detection.enabled
+    assert not page.update_profile_button.isEnabled()
+
+
+def test_profiles_page_lists_and_previews(window, context):
+    window.show_page("profiles")
+    page = window.profiles_page
+    names = [page.list.item(i).text() for i in range(page.list.count())]
+    assert any(name.startswith("Full TCP") for name in names)
+    row = next(i for i, name in enumerate(names) if name.startswith("Full TCP"))
+    page.list.setCurrentRow(row)
+    assert "-p-" in page.command.toPlainText() and page.command.toPlainText().endswith("<targets>")
+    assert page.reset_button.isVisible()
+    page._duplicate()
+    assert any(page.list.item(i).text() == "Full TCP copy" for i in range(page.list.count()))
 
 
 def test_results_filtering(window, fixtures):
@@ -295,3 +343,63 @@ def test_theme_writes_indicator_images(qapp, tmp_path, theme):
     for image in images:
         assert image.as_posix() in sheet
     assert "QComboBox::down-arrow" in sheet and "QCheckBox::indicator:checked" in sheet
+
+
+def test_target_group_draft_create_and_scan(window, context):
+    window.show_page("targets")
+    page = window.targets_page
+    page._new()
+    assert page._draft and not page.save_button.isEnabled()
+    page.name.setText("Lab")
+    page.name.textEdited.emit("Lab")
+    page.targets_edit.setPlainText("10.0.0.0/30\nfiles.lab.internal")
+    page.exclusions_edit.setPlainText("10.0.0.1")
+    page._validate()
+    assert "2 target expressions" in page.validation.text()
+    assert page._save()
+    group = next(g for g in context.target_groups.list() if g.name == "Lab")
+    assert group.targets == ["10.0.0.0/30", "files.lab.internal"] and group.exclusions == ["10.0.0.1"]
+    assert not page._draft and not page.has_unsaved_changes()
+
+    page.targets_edit.setPlainText("10.0.0.300")
+    page._validate()
+    assert "not a valid" in page.validation.text()
+    assert not page.save_button.isEnabled() and not page.scan_button.isEnabled()
+    page._show_group()
+
+    page._scan()
+    assert window.stack.currentWidget() is window.new_scan
+    assert window.new_scan.targets.text() == "10.0.0.0/30, files.lab.internal"
+    window.new_scan.refresh()
+    assert window.new_scan._current.targets.exclusions == ["10.0.0.1"]
+
+
+def test_recent_targets_tab(window, context, fixtures):
+    from genmap.core.scan_config import ScanConfiguration
+    from genmap.engine.run_store import RunStatus
+
+    config = ScanConfiguration()
+    config.targets.targets = ["192.168.56.0/29", "scanme.nmap.org"]
+    record = context.run_store.create(config)
+    shutil.copy(fixtures / "lan_inventory.xml", context.run_store.xml_path(record.run_id))
+    record.status = RunStatus.COMPLETED
+    context.run_store.save(record)
+    context.scan_index.reconcile(context.run_store)
+    window.show_page("targets")
+    page = window.targets_page
+    assert page.recent_table.rowCount() == 2
+    page.recent_table.selectAll()
+    assert sorted(page._selected_recent()) == ["192.168.56.0/29", "scanme.nmap.org"]
+    page.recent_scan.click()
+    assert window.stack.currentWidget() is window.new_scan
+
+
+def test_new_scan_groups_menu(window, context):
+    context.target_groups.create("Servers", ["10.1.0.0/24"], ["10.1.0.254"])
+    page = window.new_scan
+    page._fill_groups_menu()
+    actions = [a for a in page.groups_menu.actions() if a.text().startswith("Servers")]
+    actions[0].trigger()
+    page.refresh()
+    assert page._current.targets.targets == ["10.1.0.0/24"]
+    assert page._current.targets.exclusions == ["10.1.0.254"]
