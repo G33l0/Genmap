@@ -12,11 +12,11 @@ Genmap puts a proper desktop workflow around the Nmap you already have installed
 
 ## What works today
 
-Genmap has completed its first two development phases. Everything listed here is implemented, tested, and running against real Nmap:
+Genmap has completed its first three development phases. Everything listed here is implemented, tested, and running against real Nmap:
 
-* **Nmap detection.** Finds Nmap on PATH, through the Windows registry, or in the usual install folders, or uses a path you choose. Reads the version, build libraries, NSE script database, interfaces, and routes, and checks for Npcap and administrator rights.
+* **Nmap detection.** Finds Nmap on PATH, through the Windows registry, or in the usual install folders, or uses a path you choose. Reads the version, build libraries, NSE script database, interfaces, and routes, and checks for Npcap and administrator rights. Each data file Nmap needs (nmap-services, nmap-service-probes, nmap-os-db, and the rest) is located the way Nmap itself searches for it and counted, so a missing file is reported before a scan depends on it. A plain text diagnostic report can be copied or saved for bug reports.
 * **Capability awareness.** Works out which scan types should work with your Nmap build, capture driver, and privileges, and explains anything that probably will not.
-* **Structured scan configuration.** Every option lives in a typed `ScanConfiguration` model rather than a command string. It covers scan types, ports, host discovery, DNS, service and OS detection, NSE scripts and arguments, timing, packet options, interfaces, and output. Seven built in starting points ship as ordinary configurations.
+* **Structured scan configuration.** Every option lives in a typed `ScanConfiguration` model rather than a command string. It covers scan types, ports, host discovery, DNS (including `--resolve-all` and `--unique`), service and OS detection, NSE scripts and arguments, timing, packet options, interfaces, custom data files (`--datadir`, `--servicedb`, `--versiondb`), and output. Seven built in starting points ship as ordinary configurations.
 * **Advanced arguments.** Anything without a dedicated control, including options from newer Nmap releases, can be typed as extra arguments. They are tokenised, checked, shown in the preview, and passed through untouched.
 * **Command Inspector.** Shows the full command, every argument and where it came from, the working folder, and environment notes before anything runs.
 * **Safe launch.** Nmap is started with an argument list and never through a shell. Script selections are resolved against the installed script database the way Nmap resolves them, so the warning names the exact scripts Nmap files as intrusive, brute, dos, exploit, fuzzer, or malware, and stays quiet when there are none. Spoofing, huge scopes, and random Internet targets also need explicit confirmation.
@@ -29,7 +29,9 @@ Genmap has completed its first two development phases. Everything listed here is
 * **Reports.** Self contained HTML, JSON, CSV, or an exact copy of Nmap's XML, with scan details, configuration, hosts, ports, services, OS guesses, script output, and every warning. Reports describe what Nmap reported and never add risk ratings. HTML reports escape everything from the scanned systems and forbid scripts through a Content Security Policy.
 * **Settings.** Covers general behaviour, appearance, Nmap, network, scanning, NSE, storage, reports, logging, and advanced options.
 * **Themes.** Light, dark, following the Windows setting, and a black and green hacker theme with a monospace interface. Switch from **View, Theme** or **Settings, Appearance**.
-* **Module system.** A versioned module contract, with Nmap as the first module, is ready for future tools.
+* **Scan comparison.** Pick two stored scans, or select two in Scan History, to see new and missing hosts, ports that opened or closed, and changed services, versions, OS guesses, and script output. Each change shows what Nmap reported in both scans, kept apart from Genmap's short reading of what it could mean. Only things both scans actually covered are compared: hosts outside the other scan's targets, ports only one scan probed, and service names Nmap took from its port table are listed separately and never counted as changes. Timestamps inside script output are ignored. Comparisons export as HTML or JSON.
+* **Topology map.** Draws the paths Nmap recorded with `--traceroute`, one column per hop, for one scan or several merged. Only recorded relationships are drawn: consecutive hops, and a dotted line from the scan origin for hosts scanned without a traceroute. Hops that did not answer are shown as separate unknowns and never merged into a guessed router. Zoom, pan, inspect any node or line, and export as PNG, SVG, or JSON.
+* **Module system.** A versioned module contract, with Nmap as the first module. The scan engine runs any module that implements the process contract, and modules can be turned off and on, with their own diagnostics, from the Modules page.
 
 ![Results with port details and NSE output](docs/images/results.png)
 
@@ -39,12 +41,15 @@ Genmap has completed its first two development phases. Everything listed here is
 
 ![NSE browser](docs/images/nse.png)
 
+![Comparing two scans (sample data from the test suite)](docs/images/compare.png)
+
+![Topology map of two merged scans (sample data from the test suite)](docs/images/topology.png)
+
 ## Planned
 
-Features that are not built yet stay disabled in the sidebar until they are real:
+Features that are not built yet are not shown in the application until they are real:
 
-* **Phase 3:** scan comparison, topology map from traceroute data, and module management.
-* **Phase 4:** external modules, the Domain Atlas integration boundary, and correlation.
+* **Phase 4:** external modules loaded from outside the application, the Domain Atlas integration boundary, and correlation across tools.
 
 ## Quick start
 

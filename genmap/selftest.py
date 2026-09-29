@@ -20,16 +20,28 @@ from pathlib import Path
 from typing import Callable
 
 SAMPLE_XML = """<?xml version="1.0"?>
-<nmaprun scanner="nmap" args="nmap -sV 192.0.2.10" start="1700000000" version="7.95" xmloutputversion="1.05">
-<scaninfo type="syn" protocol="tcp" numservices="1" services="22"/>
+<nmaprun scanner="nmap" args="nmap -sV -p 22,80 192.0.2.10" start="1700000000" version="7.95" xmloutputversion="1.05">
+<scaninfo type="syn" protocol="tcp" numservices="2" services="22,80"/>
 <host><status state="up" reason="echo-reply" reason_ttl="64"/>
 <address addr="192.0.2.10" addrtype="ipv4"/>
-<ports><port protocol="tcp" portid="22"><state state="open" reason="syn-ack" reason_ttl="64"/>
+<ports><extraports state="closed" count="1"><extrareasons reason="reset" count="1" proto="tcp" ports="80"/></extraports>
+<port protocol="tcp" portid="22"><state state="open" reason="syn-ack" reason_ttl="64"/>
 <service name="ssh" product="OpenSSH" version="9.6" method="probed" conf="10"><cpe>cpe:/a:openbsd:openssh:9.6</cpe></service></port></ports>
 </host>
 <runstats><finished time="1700000005" elapsed="5.00" exit="success"/><hosts up="1" down="0" total="1"/></runstats>
 </nmaprun>
 """
+
+# The same host a day later: port 80 now answers and a traceroute was recorded.
+LATER_XML = SAMPLE_XML.replace(
+    '<extraports state="closed" count="1"><extrareasons reason="reset" count="1" proto="tcp" ports="80"/></extraports>',
+    '<port protocol="tcp" portid="80"><state state="open" reason="syn-ack" reason_ttl="64"/>'
+    '<service name="http" product="nginx" method="probed" conf="10"/></port>',
+).replace(
+    "</ports>\n</host>",
+    '</ports>\n<trace port="22" proto="tcp"><hop ttl="1" ipaddr="198.51.100.1" rtt="0.50"/>'
+    '<hop ttl="3" ipaddr="192.0.2.10" rtt="4.20"/></trace>\n</host>',
+).replace('start="1700000000"', 'start="1700086400"')
 
 
 def run_self_test(report_path: Path) -> int:
@@ -116,6 +128,7 @@ def run_self_test(report_path: Path) -> int:
         return {
             "nmap_usable": env.usable,
             "version": str(env.version) if env.version else None,
+            "data_files_found": [s.spec.name for s in env.data_files if s.found],
             "diagnostics": [f"{d.level.value}: {d.title}" for d in env.diagnostics],
         }
 
@@ -150,6 +163,24 @@ def run_self_test(report_path: Path) -> int:
             window.new_scan.set_targets("192.0.2.10")
             window.new_scan.refresh()
             assert window.new_scan._current is not None, "New Scan form did not produce a configuration"
+
+            from genmap.core.comparison import ScanSide, compare_scans
+            from genmap.topology import TopologySource, build_topology, layered_layout
+
+            exports = paths.data_dir / "selftest-exports"
+            before, after = parse_nmap_xml_string(SAMPLE_XML), parse_nmap_xml_string(LATER_XML)
+            compare = window.compare_page
+            compare._result = compare_scans(ScanSide(before, "before", ["192.0.2.10"]), ScanSide(after, "after", ["192.0.2.10"]))
+            compare._pair = ("before", "after")
+            compare._show_result()
+            assert compare.export_to("html", exports / "compare.html") is not None, "comparison export failed"
+            topology = window.topology_page
+            topology._graph = build_topology([TopologySource(after, "after")])
+            topology._positions = layered_layout(topology._graph)
+            topology._draw()
+            for fmt in ("svg", "png"):
+                written = topology.export_to(fmt, exports / f"map.{fmt}")
+                assert written is not None and written.stat().st_size > 0, f"map export as {fmt} failed"
         finally:
             window.settings_page._dirty = False
             window.close()
@@ -157,13 +188,8 @@ def run_self_test(report_path: Path) -> int:
             window.deleteLater()
             context.deleteLater()
             QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete.value)
-        return f"pages {', '.join(visited)}; themes {', '.join(k for k, _ in THEME_CHOICES)}"
+        return f"pages {', '.join(visited)}; themes {', '.join(k for k, _ in THEME_CHOICES)}; comparison and map exports written"
 
-    check("bundled resources", resources)
-    check("xml parser", parser)
-    check("xml parser rejects entities", secure_parser)
-    check("command builder", command)
-    check("settings round trip", settings)
     def database():
         from genmap.core.scan_config import ScanConfiguration
         from genmap.engine.run_store import RunStatus, RunStore
@@ -205,6 +231,26 @@ def run_self_test(report_path: Path) -> int:
         assert "OpenSSH" in html_text and "default-src 'none'" in html_text
         return ", ".join(written)
 
+    def comparison_and_topology():
+        from genmap.core.comparison import ChangeKind, ScanSide, compare_scans
+        from genmap.nmap.xml_parser import parse_nmap_xml_string
+        from genmap.topology import EdgeKind, NodeKind, TopologySource, build_topology
+
+        before, after = parse_nmap_xml_string(SAMPLE_XML), parse_nmap_xml_string(LATER_XML)
+        result = compare_scans(ScanSide(before, "before", ["192.0.2.10"]), ScanSide(after, "after", ["192.0.2.10"]))
+        kinds = [c.kind for c in result.changes()]
+        assert kinds == [ChangeKind.PORT_OPENED], f"unexpected changes {kinds}"
+        graph = build_topology([TopologySource(after, "after")])
+        assert graph.count(NodeKind.NO_REPLY) == 1 and graph.count(NodeKind.ROUTER) == 1
+        assert {e.kind for e in graph.edges.values()} == {EdgeKind.ROUTE, EdgeKind.GAP}
+        return "1 port change found; route with one silent hop drawn"
+
+    check("bundled resources", resources)
+    check("xml parser", parser)
+    check("xml parser rejects entities", secure_parser)
+    check("command builder", command)
+    check("settings round trip", settings)
+    check("comparison and topology", comparison_and_topology)
     check("nmap environment probe", environment)
     check("database and migrations", database)
     check("reports", reports)

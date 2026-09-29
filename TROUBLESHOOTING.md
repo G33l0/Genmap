@@ -36,6 +36,26 @@ Nmap refused a raw packet scan. Choose one of these:
 
 Usually Npcap is missing, or the interface picked on the Network and output tab does not exist. Leave the interface on automatic, or pick one listed under **Settings, Network**.
 
+## "nmap-os-db missing" or another data file missing
+
+**Settings, Nmap, Data files** lists every file Nmap needs, where Nmap will read it from, and what it contains. A missing file only affects the features listed next to it: without `nmap-os-db`, OS detection cannot run; without `nmap-service-probes`, version detection cannot run. Reinstall Nmap, or set **Data directory** to a folder with the complete set. Nmap searches `--datadir` first, then `NMAPDIR`, then your user Nmap folder, then its own folder, so a stray copy in an earlier folder wins. The table shows which copy is used. `nmap-payloads` is only listed for Nmap versions before 7.94, which moved UDP payloads into `nmap-service-probes`.
+
+## "A custom services file makes Nmap scan the ports that file lists"
+
+Nmap switches to fast mode whenever `--servicedb` is given and then scans the ports in that file. It refuses an explicit port list, top ports, or all ports at the same time, so Genmap stops before starting. Set the port selection back to Nmap's default, or clear the services file on the Advanced tab.
+
+## Start scan is disabled and says the Nmap module is turned off
+
+The Nmap module was turned off on the Modules page. Select it there and choose **Turn on**. The choice is remembered between sessions.
+
+## The topology map shows only dotted lines
+
+Dotted lines mean the scans did not record a route. Enable **Trace the network path (--traceroute)** on the Discovery tab and scan again; the list on the Topology page marks scans that recorded routes. Loopback targets never have a route.
+
+## A comparison shows fewer changes than expected
+
+Genmap only compares what both scans covered. Open **Show items that could not be compared** to see hosts outside the other scan's targets, ports only one scan probed, and services only one scan identified by version detection. The notes above the list explain differences in targets, ports, techniques, or Nmap versions.
+
 ## Progress bar never moves
 
 Genmap shows a percentage only when Nmap prints one. Nmap prints timing estimates during long phases, and on Linux and macOS it does not print its periodic `--stats-every` lines unless it has a terminal. When no estimate exists, the bar stays in its moving *busy* state on purpose. The host, port, and service counters still update. Verbosity 1 or higher is needed for ports to appear live.

@@ -11,8 +11,10 @@ Genmap is for authorized security testing, administration, research, and lab wor
 * Nmap is always started with an argument list through `QProcess` or `subprocess`, never with `shell=True` and never through `cmd.exe` or `/bin/sh`. Shell metacharacters in any field reach Nmap as literal text. The tests check this with values like `; rm -rf /` and `$(id)`.
 * Targets are validated before use. Anything starting with `-` is refused so it cannot be read as an option. Control characters, quotes, and shell operators are refused as well.
 * Port lists, time values, TCP flags, payload hex, MTU, and similar fields are validated by type.
-* Advanced arguments are tokenised by Genmap, not by a shell. Options that would redirect Genmap's own output or inputs are refused: `-oX`, `-oN`, `-oA`, `-oG`, `-oS`, `--append-output`, `-iL`, `--resume`, and `--stats-every`. All other options pass through and are shown in the preview.
+* Advanced arguments are tokenised by Genmap, not by a shell. Options that would redirect Genmap's own output or inputs are refused: `-oX`, `-oN`, `-oA`, `-oG`, `-oS`, `--append-output`, `-iL`, `--resume`, and `--stats-every`. `--datadir`, `--servicedb`, and `--versiondb` are refused there too, because they have dedicated fields and a second copy would silently override the first. All other options pass through and are shown in the preview.
 * The Nmap path must point at an existing file. Genmap runs `--version` on it and refuses to scan with it unless the output identifies it as Nmap.
+* Data directory and data file paths are checked for control characters and must exist before a scan starts. The data directory from Settings is passed to Nmap as `--datadir` and shown in the Command Inspector as an argument Genmap added, so the scripts and databases Genmap displays are the ones Nmap reads.
+* Every module that runs a program goes through the same engine: an argument list, no shell, the same logging, cancellation, and time limit. A module cannot bypass this, because the engine starts the process itself from the plan the module returns.
 * Scans run with Genmap's own privileges. Genmap never elevates itself.
 
 ## Intrusive configurations
@@ -41,6 +43,13 @@ High risk items require ticking an authorization box before the Start button is 
 * Failure messages are matched against Nmap's exact wording, so script output or banners that merely mention words like Npcap are not treated as errors. Every explanation quotes the Nmap line it came from.
 * A scan that exits cleanly but hit a recognised problem, such as a name that did not resolve, finishes as *Completed with warnings* instead of *Completed*.
 * Service names count as identified only when version detection confirmed them.
+
+## Comparisons and maps
+
+* Scan comparisons state what Nmap reported in each scan and keep Genmap's reading of a difference visibly separate. Hosts, ports, and services that only one scan covered are shown as context and never counted as changes, so a narrower second scan cannot make hosts look like they disappeared.
+* The topology map draws only relationships Nmap recorded. Hops that did not reply stay separate unknowns and are never merged into an assumed router.
+* Comparison HTML exports carry the same escaping and Content Security Policy as reports. Map exports render hostnames and addresses as text; the tests export a map whose hostname contains markup and check the SVG is still well formed.
+* The diagnostic report on the Settings page leaves out interface addresses and MAC addresses, since it is meant to be pasted into bug reports.
 
 ## Reports
 

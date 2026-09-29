@@ -343,7 +343,11 @@ class ComparePage(BasePage):
             metric.set_value("-")
         self.notes.hide()
         self.tree.clear()
-        self.details.setHtml("")
+        self._size_columns()
+        self.details.setHtml(
+            self._style() + "<p class='muted'>Pick a baseline and a newer scan, then choose Compare. "
+            "You can also select two scans in Scan History and choose Compare there.</p>"
+        )
 
     def _show_result(self) -> None:
         result = self._result
