@@ -302,7 +302,7 @@ def test_monitor_attach_keeps_engine_connections(window, context):
         config = ScanConfiguration()
         config.targets.targets = ["127.0.0.1"]
         record = context.run_store.create(config)
-        return ScanJob(record, build_command_plan(Path("nmap"), config), context.run_store)
+        return ScanJob(record, build_command_plan(Path("nmap"), config), context.run_store, module=context.nmap_module)
 
     first, second = make_job(), make_job()
     seen = []
@@ -322,11 +322,11 @@ def test_monitor_service_caption_reflects_version_detection(window, context):
 
     config = ScanConfiguration()
     config.targets.targets = ["127.0.0.1"]
-    job = ScanJob(context.run_store.create(config), build_command_plan(Path("nmap"), config), context.run_store)
+    job = ScanJob(context.run_store.create(config), build_command_plan(Path("nmap"), config), context.run_store, module=context.nmap_module)
     window.monitor.attach(job)
     assert "port table" in window.monitor.metric_services.caption_label.text()
     config.service_detection.enabled = True
-    job = ScanJob(context.run_store.create(config), build_command_plan(Path("nmap"), config), context.run_store)
+    job = ScanJob(context.run_store.create(config), build_command_plan(Path("nmap"), config), context.run_store, module=context.nmap_module)
     window.monitor.attach(job)
     assert window.monitor.metric_services.caption_label.text() == "Services identified"
 
@@ -685,3 +685,66 @@ def test_topology_page_empty_and_hostile_names(window, context, qtbot, tmp_path)
 
     svg = page.export_to("svg", tmp_path / "hostile.svg")
     ElementTree.parse(str(svg))  # well formed despite the markup in names
+
+
+def test_modules_page_turns_nmap_off_and_on(window, context, monkeypatch, qapp, app_paths):
+    from PyQt6.QtWidgets import QMessageBox
+
+    from genmap.modules import ModuleState
+    from genmap.settings import SettingsStore
+
+    window.show_page("modules")
+    page = window.modules
+    assert page.table.rowCount() == len(list(context.registry))
+    page.table.selectRow(0)
+    assert page.toggle_button.text() == "Turn off"
+    monkeypatch.setattr(QMessageBox, "question", lambda *a, **k: QMessageBox.StandardButton.Yes)
+    page.toggle_button.click()
+    assert not context.registry.is_enabled("nmap")
+    assert context.nmap_module.state == ModuleState.DISABLED
+    assert page.table.item(0, 1).text() == "Turned off"
+    reloaded = SettingsStore(app_paths.settings_file)
+    reloaded.load()
+    assert reloaded.settings.modules.disabled == ["nmap"]
+
+    window.show_page("new_scan")
+    window.new_scan.set_targets("127.0.0.1")
+    window.new_scan.refresh()
+    assert not window.new_scan.start_button.isEnabled()
+    assert "turned off" in window.new_scan.start_button.toolTip()
+
+    window.show_page("modules")
+    page.table.selectRow(0)
+    page.toggle_button.click()
+    assert context.registry.is_enabled("nmap") and context.settings.modules.disabled == []
+    assert context.nmap_module.state != ModuleState.DISABLED
+
+
+def test_disabled_module_setting_applies_at_startup(qapp, app_paths):
+    from genmap.modules import ModuleState
+    from genmap.settings import SettingsStore
+    from genmap.ui.app_context import AppContext
+
+    store = SettingsStore(app_paths.settings_file)
+    store.load()
+    store.settings.modules.disabled = ["nmap", "not-installed"]
+    store.save()
+    ctx = AppContext(qapp, app_paths, store)
+    try:
+        assert not ctx.registry.is_enabled("nmap")
+        assert ctx.nmap_module.state == ModuleState.DISABLED
+        assert ctx.nmap_module.context is not None  # initialised, so turning it on needs no restart
+    finally:
+        ctx.shutdown()
+        ctx.deleteLater()
+        _flush_deletions(qapp)
+
+
+def test_settings_save_keeps_module_state(window, context):
+    context.set_module_enabled("nmap", False)
+    window.show_page("settings")
+    page = window.settings_page
+    page._working.general.confirm_intrusive_scans = not page._working.general.confirm_intrusive_scans
+    assert page.save()
+    assert not context.registry.is_enabled("nmap") and context.settings.modules.disabled == ["nmap"]
+    context.set_module_enabled("nmap", True)

@@ -8,9 +8,6 @@ the person exactly what will run and why.
 
 from __future__ import annotations
 
-import subprocess
-import sys
-from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
 
@@ -23,7 +20,11 @@ from genmap.core.scan_config import (
     SctpScanTechnique,
     TcpScanTechnique,
 )
+from genmap.core.process_plan import CommandPlan, ManagedArgument, format_command
 from genmap.nmap.arguments import review_arguments
+
+# CommandPlan and format_command moved to genmap.core.process_plan; kept importable from here.
+__all__ = ["CommandPlan", "ManagedArgument", "format_command", "build_command_plan", "build_user_arguments", "build_targets"]
 
 _TCP_FLAGS = {
     TcpScanTechnique.SYN: "-sS",
@@ -40,43 +41,6 @@ _SCTP_FLAGS = {
     SctpScanTechnique.INIT: "-sY",
     SctpScanTechnique.COOKIE_ECHO: "-sZ",
 }
-
-
-@dataclass
-class ManagedArgument:
-    arguments: list[str]
-    reason: str
-
-
-@dataclass
-class CommandPlan:
-    program: Path
-    user_arguments: list[str]
-    managed_arguments: list[ManagedArgument]
-    targets: list[str]
-    warnings: list[str] = field(default_factory=list)
-    working_directory: Optional[Path] = None
-
-    @property
-    def arguments(self) -> list[str]:
-        managed = [arg for item in self.managed_arguments for arg in item.arguments]
-        return self.user_arguments + managed + self.targets
-
-    def display(self, *, program_name: Optional[str] = None) -> str:
-        name = program_name or self.program.name
-        return format_command([name] + self.arguments)
-
-    def display_user_command(self) -> str:
-        return format_command([self.program.name] + self.user_arguments + self.targets)
-
-
-def format_command(parts: list[str]) -> str:
-    """Render an argument list the way the current platform's shell would need it."""
-    if sys.platform.startswith("win"):
-        return subprocess.list2cmdline(parts)
-    import shlex
-
-    return shlex.join(parts)
 
 
 def _quote_script_arg_value(value: str) -> str:

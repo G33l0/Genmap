@@ -100,6 +100,10 @@ class AdvancedSettings(SettingsSection):
     developer_mode: bool = False
 
 
+class ModuleSettings(SettingsSection):
+    disabled: list[str] = Field(default_factory=list)
+
+
 class AppSettings(BaseModel):
     model_config = ConfigDict(extra="ignore", validate_assignment=True)
 
@@ -114,3 +118,4 @@ class AppSettings(BaseModel):
     reports: ReportSettings = Field(default_factory=ReportSettings)
     logging: LoggingSettings = Field(default_factory=LoggingSettings)
     advanced: AdvancedSettings = Field(default_factory=AdvancedSettings)
+    modules: ModuleSettings = Field(default_factory=ModuleSettings)

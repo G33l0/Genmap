@@ -7,7 +7,7 @@ import sys
 from typing import Iterator, Optional
 
 from genmap import MODULE_API_VERSION
-from genmap.core.diagnostics import Diagnostic, DiagnosticLevel, worst_level
+from genmap.core.diagnostics import Diagnostic, DiagnosticLevel
 from genmap.errors import ModuleError
 from genmap.modules.base import Module, ModuleContext, ModuleState
 
@@ -65,18 +65,20 @@ class ModuleRegistry:
         if enabled:
             self._disabled.discard(module_id)
             if module.state == ModuleState.DISABLED:
-                module.state = ModuleState.REGISTERED
+                module.state = ModuleState.READY if module.context is not None else ModuleState.REGISTERED
         else:
             self._disabled.add(module_id)
             module.state = ModuleState.DISABLED
 
     def initialize_all(self, context: ModuleContext) -> None:
+        # Turned off modules are initialised too, so turning one back on needs no restart.
         for module in self._modules.values():
-            if module.state in (ModuleState.INCOMPATIBLE, ModuleState.UNAVAILABLE, ModuleState.DISABLED):
+            if module.state in (ModuleState.INCOMPATIBLE, ModuleState.UNAVAILABLE):
                 continue
             try:
                 module.initialize(context)
-                module.state = ModuleState.READY
+                if module.state != ModuleState.DISABLED:
+                    module.state = ModuleState.READY
             except Exception as exc:
                 module.state = ModuleState.ERROR
                 module.last_error = str(exc)
@@ -85,21 +87,23 @@ class ModuleRegistry:
     def check_all(self) -> dict[str, list[Diagnostic]]:
         report: dict[str, list[Diagnostic]] = {}
         for module in self._modules.values():
-            if module.state in (ModuleState.INCOMPATIBLE, ModuleState.UNAVAILABLE, ModuleState.DISABLED, ModuleState.ERROR):
+            if module.state in (ModuleState.INCOMPATIBLE, ModuleState.DISABLED, ModuleState.ERROR):
                 continue
-            try:
-                diagnostics = module.check_environment()
-            except Exception as exc:
-                diagnostics = [Diagnostic(DiagnosticLevel.ERROR, "Environment check failed", str(exc))]
-                log.exception("Module %s environment check failed", module.manifest.id)
-            level = worst_level(diagnostics)
-            module.state = (
-                ModuleState.UNAVAILABLE if level == DiagnosticLevel.ERROR
-                else ModuleState.DEGRADED if level == DiagnosticLevel.WARNING
-                else ModuleState.READY
-            )
-            report[module.manifest.id] = diagnostics
+            if _current_platform() not in module.manifest.platforms:
+                continue
+            # A module left unavailable by a failed check is checked again; the tool may have been installed since.
+            report[module.manifest.id] = self.check(module.manifest.id)
         return report
+
+    def check(self, module_id: str) -> list[Diagnostic]:
+        module = self.require(module_id)
+        try:
+            diagnostics = module.check_environment()
+        except Exception as exc:
+            diagnostics = [Diagnostic(DiagnosticLevel.ERROR, "Environment check failed", str(exc))]
+            log.exception("Module %s environment check failed", module_id)
+        module.record_diagnostics(diagnostics)
+        return diagnostics
 
     def shutdown_all(self) -> None:
         for module in self._modules.values():

@@ -52,7 +52,7 @@ def manifest(**overrides):
 
 @pytest.fixture
 def context(app_paths):
-    return ModuleContext(paths=app_paths, settings=None, logger=logging.getLogger("test"))
+    return ModuleContext(paths=app_paths, settings_provider=lambda: None, logger=logging.getLogger("test"))
 
 
 def test_manifest_validation():
@@ -119,3 +119,22 @@ def test_nmap_module_contract():
     issues = module.validate(config)
     assert any(i.message == "No targets specified." for i in issues)
     assert module.executable() is None
+
+
+def test_module_sees_settings_replaced_after_startup(tmp_path):
+    from genmap.modules import ModuleContext
+    from genmap.modules.nmap import NmapModule
+    from genmap.paths import AppPaths
+    from genmap.settings import SettingsStore
+
+    store = SettingsStore(tmp_path / "settings.json")
+    store.load()
+    module = NmapModule()
+    paths = AppPaths(config_dir=tmp_path, data_dir=tmp_path, log_dir=tmp_path, cache_dir=tmp_path)
+    module.initialize(ModuleContext(paths=paths, settings_provider=lambda: store.settings, logger=logging.getLogger("t")))
+    candidate = store.settings.model_copy(deep=True)
+    candidate.nmap.executable_path = str(tmp_path / "nmap")
+    candidate.nmap.data_directory = str(tmp_path)
+    store.replace(candidate)  # what the Settings page does on save
+    assert module.configured_path() == str(tmp_path / "nmap")
+    assert module.configured_data_directory() == str(tmp_path)

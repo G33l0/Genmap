@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import logging
-from pathlib import Path
 from typing import Optional
 
 from PyQt6.QtCore import QObject, QRunnable, QThreadPool, pyqtSignal
@@ -59,6 +58,7 @@ class AppContext(QObject):
     profiles_changed = pyqtSignal()
     target_groups_changed = pyqtSignal()
     reports_changed = pyqtSignal()
+    modules_changed = pyqtSignal()
 
     def __init__(
         self,
@@ -75,12 +75,15 @@ class AppContext(QObject):
         self.registry = ModuleRegistry()
         self.nmap_module = NmapModule()
         self.registry.register(self.nmap_module)
-        self.registry.initialize_all(ModuleContext(paths=paths, settings=settings_store.settings, logger=logging.getLogger("genmap.modules")))
+        for module_id in settings_store.settings.modules.disabled:
+            if self.registry.get(module_id) is not None:
+                self.registry.set_enabled(module_id, False)
+        self.registry.initialize_all(ModuleContext(paths=paths, settings_provider=lambda: settings_store.settings, logger=logging.getLogger("genmap.modules")))
         self.run_store = RunStore(paths.scans_dir)
         recovered = self.run_store.recover_interrupted()
         if recovered:
             log.info("Marked %d unfinished scan(s) from a previous session as interrupted", len(recovered))
-        self.engine = ScanEngine(self.run_store, executable_provider=self.nmap_module.executable, parent=self)
+        self.engine = ScanEngine(self.run_store, self.registry, parent=self)
         self.database = database or open_database(paths.database_file)
         self.scan_index = ScanIndex(self.database)
         self.profiles = ProfileRepository(self.database)
@@ -117,14 +120,24 @@ class AppContext(QObject):
         )
         scanning = settings.scanning
         self.engine.max_concurrent = scanning.max_concurrent_scans if settings.advanced.allow_multiple_scans else 1
-        self.engine.stats_interval = scanning.stats_interval if scanning.inject_stats_interval else None
         self.engine.timeout_seconds = scanning.scan_timeout_minutes * 60
-        data_directory = settings.nmap.data_directory
-        self.engine.data_directory = Path(data_directory).expanduser() if data_directory and Path(data_directory).expanduser().is_dir() else None
         self.engine.keep_console_logs = scanning.keep_stdout_log
         from genmap.logging_setup import set_level
 
         set_level(settings.logging.level)
+
+    def set_module_enabled(self, module_id: str, enabled: bool) -> None:
+        """Turn a module on or off and remember the choice."""
+        self.registry.set_enabled(module_id, enabled)
+        module = self.registry.require(module_id)
+        if enabled and module.last_diagnostics:
+            module.record_diagnostics(module.last_diagnostics)
+        disabled = [m for m in self.settings.modules.disabled if m != module_id]
+        if not enabled:
+            disabled.append(module_id)
+        self.settings.modules.disabled = sorted(disabled)
+        self.settings_store.save()
+        self.modules_changed.emit()
 
     def _on_settings_saved(self, settings: AppSettings) -> None:
         self.apply_settings(settings)

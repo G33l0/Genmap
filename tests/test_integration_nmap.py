@@ -19,10 +19,13 @@ pytestmark = [pytest.mark.integration, requires_nmap]
 
 def engine_for(tmp_path, executable=None):
     from genmap.engine.scan_engine import ScanEngine
+    from genmap.modules import ModuleRegistry
+    from genmap.modules.nmap import NmapModule
 
     store = RunStore(tmp_path / "scans")
-    path = Path(executable) if executable else Path(nmap_path())
-    return ScanEngine(store, executable_provider=lambda: path), store
+    registry = ModuleRegistry()
+    registry.register(NmapModule(executable=Path(executable) if executable else Path(nmap_path())))
+    return ScanEngine(store, registry), store
 
 
 def test_probe_environment_finds_nmap():
@@ -102,8 +105,13 @@ def test_cancel_running_scan(qtbot, tmp_path):
 def test_missing_executable_is_reported(tmp_path):
     from genmap.engine.scan_engine import ScanEngine
 
+    from genmap.modules import ModuleRegistry
+    from genmap.modules.nmap import NmapModule
+
     store = RunStore(tmp_path / "scans")
-    engine = ScanEngine(store, executable_provider=lambda: None)
+    registry = ModuleRegistry()
+    registry.register(NmapModule())  # never probed, so no executable is known
+    engine = ScanEngine(store, registry)
     config = ScanConfiguration()
     config.targets.targets = ["127.0.0.1"]
     with pytest.raises(NmapNotFoundError):

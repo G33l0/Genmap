@@ -212,6 +212,8 @@ class SettingsPage(BasePage):
         recent = self.context.settings.general.recent_targets
         candidate.general.recent_targets = recent
         candidate.general.last_page = self.context.settings.general.last_page
+        # Module on/off state is managed on the Modules page, not here.
+        candidate.modules = self.context.settings.modules.model_copy(deep=True)
         try:
             self.context.settings_store.replace(candidate)
         except Exception as exc:

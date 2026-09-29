@@ -137,7 +137,14 @@ class RunStore:
     def stderr_path(self, run_id: str) -> Path:
         return self.run_directory(run_id) / self.STDERR_FILE
 
-    def create(self, config: ScanConfiguration, *, profile_name: Optional[str] = None, module_id: str = "nmap") -> RunRecord:
+    def create(
+        self,
+        config: BaseModel,
+        *,
+        profile_name: Optional[str] = None,
+        module_id: str = "nmap",
+        target_summary: Optional[str] = None,
+    ) -> RunRecord:
         now = datetime.now().astimezone()
         run_id = _new_run_id(now)
         directory = self.run_directory(run_id)
@@ -157,7 +164,7 @@ class RunStore:
             run_id=run_id,
             module_id=module_id,
             profile_name=profile_name,
-            target_summary=describe_targets(config),
+            target_summary=target_summary if target_summary is not None else (describe_targets(config) if isinstance(config, ScanConfiguration) else ""),
             created_at=now,
             configuration=config.model_dump(mode="json"),
         )

@@ -37,7 +37,7 @@ from genmap.core.scan_config import (
 )
 from genmap.core.targets import split_target_text
 from genmap.errors import GenmapError
-from genmap.nmap.command_builder import CommandPlan, build_command_plan
+from genmap.nmap.command_builder import CommandPlan
 from genmap.nmap.environment import NmapEnvironment
 from genmap.nmap.locator import EXECUTABLE_NAME
 from genmap.nmap.requirements import environment_warnings
@@ -203,6 +203,7 @@ class NewScanPage(BasePage):
         context.environment_changed.connect(self._on_environment_changed)
         context.engine.job_started.connect(lambda _job: self._update_start_enabled())
         context.engine.job_finished.connect(lambda _job: self._update_start_enabled())
+        context.modules_changed.connect(self._update_start_enabled)
         context.profiles_changed.connect(self._reload_profiles)
         self._reload_profiles()
         default = next((p for p in self._profiles.values() if p.builtin_key == "default"), None)
@@ -451,13 +452,7 @@ class NewScanPage(BasePage):
         self._plan = None
         if config is not None:
             try:
-                self._plan = build_command_plan(
-                    self._program_for_preview(),
-                    config,
-                    xml_output=_PREVIEW_XML,
-                    stats_interval=self.context.engine.stats_interval,
-                    data_directory=self.context.engine.data_directory,
-                )
+                self._plan = self.context.nmap_module.plan_for(self._program_for_preview(), config, xml_output=_PREVIEW_XML)
             except GenmapError as exc:
                 self._issues.append(ValidationIssue(severity="error", message=exc.message, remedy=exc.remedy))
             else:
@@ -517,8 +512,11 @@ class NewScanPage(BasePage):
         ready = self._plan is not None and not has_errors(self._issues)
         usable = env is not None and env.usable
         busy = self.context.engine.is_busy
-        self.start_button.setEnabled(ready and usable and not busy)
-        if not usable:
+        module_on = self.context.registry.is_enabled("nmap")
+        self.start_button.setEnabled(ready and usable and not busy and module_on)
+        if not module_on:
+            self.start_button.setToolTip("The Nmap module is turned off. Turn it on under Modules.")
+        elif not usable:
             self.start_button.setToolTip("Nmap is not available. See Settings, Nmap.")
         elif busy:
             self.start_button.setToolTip("A scan is already running.")

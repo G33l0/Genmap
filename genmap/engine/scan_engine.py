@@ -1,9 +1,9 @@
-"""Nmap process execution on top of QProcess.
+"""Process execution on top of QProcess.
 
-A ScanJob owns one Nmap process and everything captured from it. The
-ScanEngine hands out jobs, enforces the concurrency policy, and keeps the
-run records up to date. Signals are the only way state leaves this module,
-so the UI never has to poll or block.
+A ScanJob owns one external process and everything captured from it. What
+to run, how to read its output, and what the finished run produced all
+come from the module (for example the Nmap module); the job only handles
+the process itself: console capture, cancellation, and time limits.
 """
 
 from __future__ import annotations
@@ -12,39 +12,28 @@ import codecs
 import logging
 import sys
 from datetime import datetime
-from pathlib import Path
-from typing import IO, Callable, Optional
+from typing import IO, Optional
 
 from PyQt6.QtCore import QObject, QProcess, QTimer, pyqtSignal
+from pydantic import BaseModel
 
-from genmap.core.scan_config import ScanConfiguration, has_errors, validate_configuration
-from genmap.engine.run_store import CommandRecord, RunRecord, RunStatus, RunStore, summarize_result
-from genmap.errors import ConfigurationError, NmapExecutionError, NmapNotFoundError, ScanEngineBusyError, XmlParseError
-from genmap.nmap.command_builder import CommandPlan, build_command_plan
-from genmap.nmap.output_monitor import LiveScanState, OutputMonitor
+from genmap.core.process_plan import CommandPlan
+from genmap.core.scan_config import has_errors
+from genmap.engine.run_store import CommandRecord, RunRecord, RunStatus, RunStore
+from genmap.errors import ConfigurationError, ModuleError, NmapExecutionError, ScanEngineBusyError
+from genmap.modules.base import ModuleState, ProcessModule, RunMonitor
+from genmap.modules.registry import ModuleRegistry
 
 log = logging.getLogger(__name__)
 
 
-def _last_meaningful_line(lines: list[str]) -> Optional[str]:
-    """Last line that is an actual message, skipping Lua traceback noise and QUITTING!."""
-    for line in reversed(lines):
-        text = line.strip()
-        if not text or text == "QUITTING!" or line.startswith(("\t", " ")) or text.startswith(("stack traceback", "[C]")):
-            continue
-        if text.startswith("See the output of nmap -h"):
-            continue
-        return text
-    return None
-
-
 class ScanJob(QObject):
-    """One running (or finished) Nmap process."""
+    """One running (or finished) tool process."""
 
     started = pyqtSignal()
     output = pyqtSignal(str, bool)  # text, is_stderr
-    live_state_changed = pyqtSignal(object)  # LiveScanState
-    progress_changed = pyqtSignal(object)  # TaskProgress
+    live_state_changed = pyqtSignal(object)  # the module monitor's state
+    progress_changed = pyqtSignal(object)  # the monitor's progress value
     finished = pyqtSignal(object)  # RunRecord
 
     def __init__(
@@ -53,6 +42,7 @@ class ScanJob(QObject):
         plan: CommandPlan,
         store: RunStore,
         *,
+        module: ProcessModule,
         timeout_seconds: int = 0,
         keep_console_logs: bool = True,
         parent: Optional[QObject] = None,
@@ -61,7 +51,8 @@ class ScanJob(QObject):
         self.record = record
         self.plan = plan
         self.store = store
-        self.monitor = OutputMonitor()
+        self.module = module
+        self.monitor: RunMonitor = module.create_monitor()
         self.timeout_seconds = timeout_seconds
         self._keep_logs = keep_console_logs
         self._process = QProcess(self)
@@ -99,7 +90,7 @@ class ScanJob(QObject):
         return self.record.run_id
 
     @property
-    def live_state(self) -> LiveScanState:
+    def live_state(self):
         return self.monitor.state
 
     @property
@@ -199,8 +190,8 @@ class ScanJob(QObject):
             self._finish(
                 RunStatus.FAILED,
                 exit_code=None,
-                error_message=f"Nmap could not be started from {self.plan.program}.",
-                error_remedy="Check the Nmap path under Settings and that the file is executable.",
+                error_message=f"{self.module.tool_name} could not be started from {self.plan.program}.",
+                error_remedy=f"Check the {self.module.tool_name} path under Settings and that the file is executable.",
             )
         elif error == QProcess.ProcessError.Crashed and not self._cancel_requested:
             # finished() follows with CrashExit; nothing to do here.
@@ -223,26 +214,27 @@ class ScanJob(QObject):
             self._finish(
                 RunStatus.CRASHED,
                 exit_code=exit_code,
-                error_message="Nmap terminated unexpectedly.",
+                error_message=f"{self.module.tool_name} terminated unexpectedly.",
                 error_remedy="Review the console output for the last messages before it stopped.",
             )
         elif exit_code != 0:
+            tool = self.module.tool_name
             hint = self.monitor.state.problems[0] if self.monitor.state.problems else None
-            message = hint.message if hint else f"Nmap exited with code {exit_code}."
+            message = hint.message if hint else f"{tool} exited with code {exit_code}."
             if hint:
-                remedy = f"{hint.remedy} Nmap reported: {hint.source_line}"
+                remedy = f"{hint.remedy} {tool} reported: {hint.source_line}"
             else:
-                error_line = _last_meaningful_line(self.stderr_lines) or _last_meaningful_line(self.stdout_lines)
-                remedy = f"Nmap reported: {error_line}" if error_line else None
+                error_line = self.module.failure_line(self.stderr_lines) or self.module.failure_line(self.stdout_lines)
+                remedy = f"{tool} reported: {error_line}" if error_line else None
             self._finish(RunStatus.FAILED, exit_code=exit_code, error_message=message, error_remedy=remedy)
         elif self.monitor.state.problems:
-            # Nmap can exit 0 after skipping work, for example when a name does not resolve.
+            # Tools can exit 0 after skipping work, as Nmap does when a name does not resolve.
             first = self.monitor.state.problems[0]
             self._finish(
                 RunStatus.COMPLETED_WITH_WARNINGS,
                 exit_code=exit_code,
                 error_message=first.message,
-                error_remedy=f"{first.remedy} Nmap reported: {first.source_line}",
+                error_remedy=f"{first.remedy} {self.module.tool_name} reported: {first.source_line}",
             )
         else:
             self._finish(RunStatus.COMPLETED, exit_code=exit_code)
@@ -274,26 +266,14 @@ class ScanJob(QObject):
         record.error_remedy = error_remedy
         record.warnings = list(self.monitor.state.warnings)[:50]
 
-        xml_path = self.store.xml_path(self.run_id)
-        if xml_path.is_file():
-            try:
-                result = self.store.load_result(self.run_id)
-            except XmlParseError as exc:
-                result = None
-                log.warning("Result XML for %s unusable: %s", self.run_id, exc.details)
-                if status == RunStatus.COMPLETED:
-                    record.status = RunStatus.COMPLETED_WITH_WARNINGS
-                    record.warnings.append("Nmap finished but its XML output could not be parsed.")
-            if result is not None:
-                record.summary = summarize_result(result)
-                record.nmap_version = record.nmap_version or result.nmap_version
-                if status == RunStatus.COMPLETED and (result.truncated or result.statistics.exit_status == "error"):
-                    record.status = RunStatus.COMPLETED_WITH_WARNINGS
-                    if result.statistics.error_message:
-                        record.warnings.append(result.statistics.error_message)
-        elif status == RunStatus.COMPLETED:
-            record.status = RunStatus.COMPLETED_WITH_WARNINGS
-            record.warnings.append("Nmap finished without writing an XML result file.")
+        try:
+            self.module.finalize_run(record, self.store)
+        except Exception:
+            # A module bug must not leave the run looking as if it were still going.
+            log.exception("Module %s could not finalise run %s", self.module.manifest.id, self.run_id)
+            if record.status == RunStatus.COMPLETED:
+                record.status = RunStatus.COMPLETED_WITH_WARNINGS
+            record.warnings.append("The results of this run could not be read completely.")
 
         self.store.save(record)
         log.info("Scan %s finished: %s (exit code %s)", self.run_id, record.status.value, exit_code)
@@ -306,22 +286,14 @@ class ScanEngine(QObject):
     job_started = pyqtSignal(object)  # ScanJob
     job_finished = pyqtSignal(object)  # ScanJob
 
-    def __init__(
-        self,
-        store: RunStore,
-        *,
-        executable_provider: Callable[[], Optional[Path]],
-        parent: Optional[QObject] = None,
-    ) -> None:
+    def __init__(self, store: RunStore, registry: ModuleRegistry, *, parent: Optional[QObject] = None) -> None:
         super().__init__(parent)
         self.store = store
-        self._executable_provider = executable_provider
+        self.registry = registry
         self._jobs: dict[str, ScanJob] = {}
         self.max_concurrent = 1
-        self.stats_interval: Optional[str] = "2s"
         self.timeout_seconds = 0
         self.keep_console_logs = True
-        self.data_directory: Optional[Path] = None
 
     @property
     def active_jobs(self) -> list[ScanJob]:
@@ -334,25 +306,24 @@ class ScanEngine(QObject):
     def job(self, run_id: str) -> Optional[ScanJob]:
         return self._jobs.get(run_id)
 
-    def plan(self, config: ScanConfiguration, *, xml_output: Optional[Path] = None) -> CommandPlan:
-        executable = self._executable_provider()
-        if executable is None:
-            raise NmapNotFoundError(
-                remedy="Install Nmap or set its location under Settings, Nmap.",
-            )
-        return build_command_plan(
-            executable,
-            config,
-            xml_output=xml_output,
-            stats_interval=self.stats_interval,
-            noninteractive=False,
-            data_directory=self.data_directory,
-        )
+    def module_for(self, module_id: str) -> ProcessModule:
+        module = self.registry.get(module_id)
+        if module is None:
+            raise ModuleError(f"No module with id '{module_id}' is registered.")
+        name = module.manifest.name
+        if not isinstance(module, ProcessModule):
+            raise ModuleError(f"The {name} module does not run scans.")
+        if not self.registry.is_enabled(module_id):
+            raise ModuleError(f"The {name} module is turned off.", remedy="Turn it on again on the Modules page.")
+        if module.state in (ModuleState.INCOMPATIBLE, ModuleState.ERROR):
+            raise ModuleError(f"The {name} module cannot run: {module.last_error or module.state.value}.")
+        return module
 
     def start(
         self,
-        config: ScanConfiguration,
+        config: BaseModel,
         *,
+        module_id: str = "nmap",
         profile_name: Optional[str] = None,
         profile_id: Optional[int] = None,
     ) -> ScanJob:
@@ -360,14 +331,15 @@ class ScanEngine(QObject):
             raise ScanEngineBusyError(
                 remedy="Wait for the running scan to finish or cancel it before starting another.",
             )
-        issues = validate_configuration(config)
+        module = self.module_for(module_id)
+        issues = module.validate(config)
         if has_errors(issues):
             first = next(i for i in issues if i.severity == "error")
             raise ConfigurationError(first.message, remedy=first.remedy)
 
-        record = self.store.create(config, profile_name=profile_name)
+        record = self.store.create(config, profile_name=profile_name, module_id=module_id, target_summary=module.describe_targets(config))
         try:
-            plan = self.plan(config, xml_output=self.store.xml_path(record.run_id))
+            plan = module.build_plan(config, run_directory=self.store.run_directory(record.run_id))
         except Exception:
             self.store.delete(record.run_id)
             raise
@@ -385,6 +357,7 @@ class ScanEngine(QObject):
             record,
             plan,
             self.store,
+            module=module,
             timeout_seconds=self.timeout_seconds,
             keep_console_logs=self.keep_console_logs,
             parent=self,
@@ -396,7 +369,7 @@ class ScanEngine(QObject):
             job.start()
         except Exception as exc:
             self._jobs.pop(record.run_id, None)
-            raise NmapExecutionError(cause=exc)
+            raise NmapExecutionError(f"{module.tool_name} could not be started.", cause=exc)
         self.job_started.emit(job)
         return job
 

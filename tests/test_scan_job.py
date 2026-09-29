@@ -5,7 +5,8 @@ from PyQt6.QtCore import QProcess
 
 from genmap.core.scan_config import ScanConfiguration
 from genmap.engine.run_store import RunStatus, RunStore
-from genmap.engine.scan_engine import ScanJob, _last_meaningful_line
+from genmap.engine.scan_engine import ScanJob
+from genmap.modules.nmap import NmapModule
 from genmap.nmap.command_builder import build_command_plan
 
 
@@ -16,7 +17,7 @@ def make_job(tmp_path, fixtures, with_xml=True):
     record = store.create(config)
     if with_xml:
         shutil.copy(fixtures / "lan_inventory.xml", store.xml_path(record.run_id))
-    return ScanJob(record, build_command_plan(Path("nmap"), config), store)
+    return ScanJob(record, build_command_plan(Path("nmap"), config), store, module=NmapModule())
 
 
 def finish(job, lines, exit_code, stderr=()):
@@ -61,5 +62,5 @@ def test_unknown_failure_uses_nmaps_last_real_message(qapp, tmp_path, fixtures):
 
 
 def test_last_meaningful_line_skips_noise():
-    assert _last_meaningful_line(["real problem", "See the output of nmap -h for a summary of options.", "QUITTING!"]) == "real problem"
-    assert _last_meaningful_line(["", "   "]) is None
+    assert NmapModule().failure_line(["real problem", "See the output of nmap -h for a summary of options.", "QUITTING!"]) == "real problem"
+    assert NmapModule().failure_line(["", "   "]) is None
