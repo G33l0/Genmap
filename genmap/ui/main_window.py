@@ -31,6 +31,7 @@ from genmap.nmap.environment import NmapEnvironment
 from genmap.resources import app_icon, logo_pixmap
 from genmap.ui.app_context import AppContext
 from genmap.ui.pages.base import BasePage
+from genmap.ui.pages.compare import ComparePage
 from genmap.ui.pages.dashboard import DashboardPage
 from genmap.ui.pages.history import HistoryPage
 from genmap.ui.pages.modules import ModulesPage
@@ -56,6 +57,7 @@ NAV_ENTRIES = [
     NavEntry("scan_monitor", "Live Scan", "The scan running now or most recently"),
     NavEntry("results", "Results", "Browse hosts, ports, and script output"),
     NavEntry("history", "Scan History", "Previous scans (Ctrl+H)"),
+    NavEntry("compare", "Compare", "Differences between two scans"),
     NavEntry("targets", "Targets", "Saved target groups and recently scanned targets"),
     NavEntry("profiles", "Profiles", "Reusable scan configurations"),
     NavEntry("nse", "NSE Scripts", "Browse the scripts installed with Nmap"),
@@ -121,6 +123,7 @@ class MainWindow(QMainWindow):
         self.monitor = ScanMonitorPage(context)
         self.results = ResultsPage(context)
         self.history = HistoryPage(context)
+        self.compare_page = ComparePage(context)
         self.profiles_page = ProfilesPage(context)
         self.targets_page = TargetsPage(context)
         self.nse_page = NsePage(context)
@@ -128,7 +131,7 @@ class MainWindow(QMainWindow):
         self.modules = ModulesPage(context)
         self.settings_page = SettingsPage(context)
         self.pages: dict[str, BasePage] = {}
-        for page in (self.dashboard, self.new_scan, self.monitor, self.results, self.history, self.targets_page, self.profiles_page, self.nse_page, self.reports_page, self.modules, self.settings_page):
+        for page in (self.dashboard, self.new_scan, self.monitor, self.results, self.history, self.compare_page, self.targets_page, self.profiles_page, self.nse_page, self.reports_page, self.modules, self.settings_page):
             self.pages[page.page_key] = page
             self.stack.addWidget(page)
         self._current_key: Optional[str] = None
@@ -166,6 +169,7 @@ class MainWindow(QMainWindow):
         self.new_scan.save_targets_requested.connect(self._save_targets_as_group)
         self.nse_page.add_script_requested.connect(self._add_script)
         self.history.report_requested.connect(self.open_reports_for)
+        self.history.compare_requested.connect(self.open_comparison)
         self.results.report_requested.connect(self.open_reports_for)
 
     def _build_menus(self) -> None:
@@ -240,6 +244,10 @@ class MainWindow(QMainWindow):
         set_status(self.nmap_status, level)
 
     # Navigation -------------------------------------------------------------
+
+    def open_comparison(self, baseline_id: str, newer_id: str) -> None:
+        self.show_page("compare")
+        self.compare_page.select_pair(baseline_id, newer_id)
 
     def show_page(self, key: str) -> None:
         page = self.pages.get(key)

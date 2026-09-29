@@ -155,6 +155,7 @@ class Metric(QFrame):
         self.caption_label = label(caption, role="muted")
         layout.addWidget(self.value_label)
         layout.addWidget(self.caption_label)
+        layout.addStretch(1)
 
     def set_value(self, value: str) -> None:
         self.value_label.setText(value)

@@ -67,6 +67,7 @@ class HistoryPage(BasePage):
     rerun_requested = pyqtSignal(object)  # ScanConfiguration
     monitor_requested = pyqtSignal(str)
     report_requested = pyqtSignal(str)
+    compare_requested = pyqtSignal(str, str)  # baseline run id, newer run id
 
     HEADERS = ["Started", "Targets", "Profile", "Status", "Duration", "Hosts up", "Open ports", "Tags", "Nmap", "Command"]
 
@@ -99,11 +100,13 @@ class HistoryPage(BasePage):
         self.rerun_button.setToolTip("Run the same configuration again after confirmation")
         self.duplicate_button = QPushButton("Edit copy")
         self.duplicate_button.setToolTip("Load this configuration into New Scan without starting it")
+        self.compare_button = QPushButton("Compare")
+        self.compare_button.setToolTip("Select two scans to see what changed between them")
         self.tags_button = QPushButton("Tags...")
         self.folder_button = QPushButton("Show files")
         self.delete_button = QPushButton("Delete")
         self.delete_button.setProperty("danger", True)
-        for button in (self.open_button, self.report_button, self.rerun_button, self.duplicate_button, self.tags_button, self.folder_button, self.delete_button):
+        for button in (self.open_button, self.report_button, self.rerun_button, self.duplicate_button, self.compare_button, self.tags_button, self.folder_button, self.delete_button):
             toolbar.addWidget(button)
         outer.addLayout(toolbar)
 
@@ -141,6 +144,7 @@ class HistoryPage(BasePage):
         self.report_button.clicked.connect(self._report)
         self.rerun_button.clicked.connect(self._rerun)
         self.duplicate_button.clicked.connect(self._duplicate)
+        self.compare_button.clicked.connect(self._compare)
         self.tags_button.clicked.connect(self._edit_tags)
         self.folder_button.clicked.connect(self._show_folder)
         self.delete_button.clicked.connect(self._delete)
@@ -264,6 +268,18 @@ class HistoryPage(BasePage):
         self.tags_button.setEnabled(single)
         self.folder_button.setEnabled(single and has_files)
         self.delete_button.setEnabled(bool(ids) and not any(self._running(i) for i in ids))
+        pair = [self._scans.get(i) for i in ids] if len(ids) == 2 else []
+        self.compare_button.setEnabled(
+            len(pair) == 2 and all(s is not None and not s.folder_missing and not self._running(s.run_id) for s in pair)
+        )
+
+    def _compare(self) -> None:
+        ids = self._selected_ids()
+        if len(ids) != 2:
+            return
+        pair = sorted((self._scans[i] for i in ids if i in self._scans), key=lambda s: s.created_at)
+        if len(pair) == 2:
+            self.compare_requested.emit(pair[0].run_id, pair[1].run_id)
 
     def _open(self) -> None:
         scan = self._current()
@@ -352,7 +368,7 @@ class HistoryPage(BasePage):
         if not self._selected_ids():
             return
         menu = QMenu(self)
-        for button in (self.open_button, self.report_button, self.rerun_button, self.duplicate_button, self.tags_button, self.folder_button, self.delete_button):
+        for button in (self.open_button, self.report_button, self.rerun_button, self.duplicate_button, self.compare_button, self.tags_button, self.folder_button, self.delete_button):
             action = menu.addAction(button.text(), button.click)
             action.setEnabled(button.isEnabled())
         menu.exec(self.table.viewport().mapToGlobal(position))

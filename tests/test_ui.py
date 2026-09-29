@@ -544,3 +544,90 @@ def test_flow_layout_wraps_instead_of_squeezing(qtbot):
     assert len({b.geometry().y() for b in buttons}) == len(buttons)
     assert all(b.geometry().width() == h.width() for b, h in zip(buttons, hints))
     assert layout.heightForWidth(narrow) > layout.heightForWidth(wide)
+
+
+def _stored_scan(context, fixtures, xml_name, targets):
+    from genmap.core.scan_config import ScanConfiguration
+    from genmap.engine.run_store import RunStatus
+
+    config = ScanConfiguration()
+    config.targets.targets = list(targets)
+    record = context.run_store.create(config)
+    shutil.copy(fixtures / xml_name, context.run_store.xml_path(record.run_id))
+    record.status = RunStatus.COMPLETED
+    context.run_store.save(record)
+    return record
+
+
+def test_compare_page_from_history(window, context, fixtures, qtbot, tmp_path):
+    older = _stored_scan(context, fixtures, "lan_inventory.xml", ["192.168.56.0/29"])
+    newer = _stored_scan(context, fixtures, "lan_inventory_later.xml", ["192.168.56.0/29"])
+    context.scan_index.reconcile(context.run_store)
+    window.show_page("history")
+    history = window.history
+    assert not history.compare_button.isEnabled()
+    history.table.selectAll()
+    assert history.compare_button.isEnabled()
+    history.compare_button.click()
+
+    page = window.compare_page
+    assert window.stack.currentWidget() is page
+    assert page.baseline.current_value() == older.run_id and page.newer.current_value() == newer.run_id
+    qtbot.waitUntil(lambda: page._result is not None, timeout=10000)
+    assert page.metrics["new_hosts"].value_label.text() == "1"
+    assert page.metrics["missing_hosts"].value_label.text() == "1"
+    assert page.metrics["service_changes"].value_label.text() != "0"
+
+    def labels():
+        found = []
+        for i in range(page.tree.topLevelItemCount()):
+            top = page.tree.topLevelItem(i)
+            found.append(top.text(0))
+            found.extend(top.child(j).text(0) for j in range(top.childCount()))
+        return found
+
+    # The out of scope host and uncovered port only appear on request.
+    assert not any("10.9.9.9" in text for text in labels())
+    assert not any(text.startswith("Port not probed") for text in labels())
+    page.show_informational.setChecked(True)
+    assert any("10.9.9.9" in text for text in labels())
+    assert any(text.startswith("Port not probed") for text in labels())
+    page.show_informational.setChecked(False)
+
+    page.filter.set_current_value("scripts")
+    tops = [page.tree.topLevelItem(i) for i in range(page.tree.topLevelItemCount())]
+    assert tops and all(top.child(j).text(0).startswith("Script output") for top in tops for j in range(top.childCount()))
+    page.tree.setCurrentItem(tops[0].child(0))
+    text = page.details.toPlainText()
+    assert "What Nmap reported" in text and "Genmap's reading" in text
+
+    written = page.export_to("html", tmp_path / "cmp.html")
+    assert written is not None and "Content-Security-Policy" in written.read_text(encoding="utf-8")
+    import json
+
+    data = json.loads(page.export_to("json", tmp_path / "cmp.json").read_text(encoding="utf-8"))
+    assert data["summary"]["new_hosts"] == 1
+
+    page.swap()
+    assert page.baseline.current_value() == newer.run_id
+    assert page.order_note.isVisible()
+
+
+def test_compare_page_needs_two_scans(window, context, fixtures):
+    _stored_scan(context, fixtures, "lan_inventory.xml", ["192.168.56.0/29"])
+    context.scan_index.reconcile(context.run_store)
+    window.show_page("compare")
+    page = window.compare_page
+    assert not page.compare_button.isEnabled()
+    assert "two stored scans" in page.order_note.text()
+    assert not page.export_html_button.isEnabled()
+
+
+def test_compare_details_escape_scanned_content(window, context):
+    from genmap.core.comparison import Change, ChangeKind, ComparisonResult
+
+    page = window.compare_page
+    page._result = ComparisonResult("a", "b", [], [])
+    change = Change(ChangeKind.SCRIPT_CHANGED, "10.0.0.1", "http-title on 80/tcp", "<b>old</b>", "<script>x</script>", "reading")
+    rendered = page.change_html(change)
+    assert "<script>x" not in rendered and "&lt;script&gt;" in rendered

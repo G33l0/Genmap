@@ -1,0 +1,118 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE nmaprun>
+<?xml-stylesheet href="file:///C:/Program Files (x86)/Nmap/nmap.xsl" type="text/xsl"?>
+<!-- Nmap 7.95 scan initiated Tue Mar 11 09:14:02 2025 as: nmap -sS -sU -sV -O -&#45;traceroute -sC -p T:22,80,443,445,3389,8080,U:53,161 -oX lan_inventory_later.xml 192.168.56.0/29 10.9.9.9 -->
+<nmaprun scanner="nmap" args="nmap -sS -sU -sV -O --traceroute -sC -p T:22,80,443,445,3389,8080,U:53,161 -oX lan_inventory_later.xml 192.168.56.0/29 10.9.9.9" start="1742289242" startstr="Tue Mar 18 09:14:02 2025" version="7.95" xmloutputversion="1.05">
+<scaninfo type="syn" protocol="tcp" numservices="6" services="22,80,443,445,3389,8080"/>
+<scaninfo type="udp" protocol="udp" numservices="2" services="53,161"/>
+<verbose level="1"/>
+<debugging level="0"/>
+<prescript><script id="broadcast-dhcp-discover" output="&#xa;  Response 1 of 1: &#xa;    IP Offered: 192.168.56.20&#xa;    Server Identifier: 192.168.56.1"/></prescript>
+<hosthint><status state="up" reason="arp-response" reason_ttl="0"/>
+<address addr="192.168.56.1" addrtype="ipv4"/>
+<address addr="0A:00:27:00:00:0C" addrtype="mac"/>
+<hostnames>
+</hostnames>
+</hosthint>
+<host starttime="1741684443" endtime="1741684501"><status state="up" reason="arp-response" reason_ttl="0"/>
+<address addr="192.168.56.1" addrtype="ipv4"/>
+<address addr="0A:00:27:00:00:0C" addrtype="mac" vendor="MikroTik"/>
+<hostnames>
+<hostname name="gw.lab.internal" type="PTR"/>
+</hostnames>
+<ports><extraports state="closed" count="3">
+<extrareasons reason="reset" count="3" proto="tcp" ports="22,445,3389"/>
+</extraports>
+<port protocol="tcp" portid="80"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="http" product="MikroTik router config httpd" version="7.14" ostype="RouterOS" devicetype="router" method="probed" conf="10"><cpe>cpe:/o:mikrotik:routeros</cpe></service><script id="http-title" output="RouterOS router configuration page"><elem key="title">RouterOS router configuration page</elem></script></port>
+<port protocol="tcp" portid="443"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="https" product="MikroTik router config httpd" tunnel="ssl" method="probed" conf="10"/></port>
+<port protocol="udp" portid="53"><state state="open" reason="udp-response" reason_ttl="64"/><service name="domain" product="MikroTik RouterOS named or OpenDNS Updater" method="probed" conf="10"><cpe>cpe:/o:mikrotik:routeros</cpe></service></port>
+<port protocol="udp" portid="161"><state state="closed" reason="port-unreach" reason_ttl="64"/><service name="snmp" method="table" conf="3"/></port>
+</ports>
+<os><portused state="open" proto="tcp" portid="80"/>
+<portused state="closed" proto="tcp" portid="22"/>
+<portused state="closed" proto="udp" portid="40126"/>
+<osmatch name="MikroTik RouterOS 6.36 - 6.48 (Linux 3.3.5)" accuracy="100" line="84637">
+<osclass type="router" vendor="MikroTik" osfamily="RouterOS" osgen="6.X" accuracy="100"><cpe>cpe:/o:mikrotik:routeros:6</cpe></osclass>
+<osclass type="router" vendor="Linux" osfamily="Linux" osgen="3.X" accuracy="100"><cpe>cpe:/o:linux:linux_kernel:3.3.5</cpe></osclass>
+</osmatch>
+</os>
+<uptime seconds="1901212" lastboot="Sun Feb 23 09:07:49 2025"/>
+<distance value="1"/>
+<tcpsequence index="262" difficulty="Good luck!" values="A1B2C3D4,1A2B3C4D,55AA66BB,77CC88DD,99EEAAFF,BB00CC11"/>
+<ipidsequence class="All zeros" values="0,0,0,0,0,0"/>
+<tcptssequence class="1000HZ" values="4D4F8A12,4D4F8A7E,4D4F8AE2,4D4F8B46,4D4F8BAA,4D4F8C0E"/>
+<hostscript><script id="snmp-info" output="&#xa;  enterprise: mikrotik&#xa;  engineIDFormat: unknown"><elem key="enterprise">mikrotik</elem><elem key="engineIDFormat">unknown</elem></script></hostscript>
+<trace>
+<hop ttl="1" ipaddr="192.168.56.1" rtt="0.42" host="gw.lab.internal"/>
+</trace>
+<times srtt="421" rttvar="160" to="100000"/>
+</host>
+<host starttime="1741684443" endtime="1741684560"><status state="up" reason="arp-response" reason_ttl="0"/>
+<address addr="192.168.56.5" addrtype="ipv4"/>
+<address addr="08:00:27:4E:66:A1" addrtype="mac" vendor="Oracle VirtualBox virtual NIC"/>
+<hostnames>
+<hostname name="files.lab.internal" type="PTR"/>
+</hostnames>
+<ports><extraports state="closed" count="3">
+<extrareasons reason="reset" count="3" proto="tcp" ports="80,443,445"/>
+</extraports>
+<port protocol="tcp" portid="22"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="ssh" product="OpenSSH" version="9.6p1 Ubuntu 3ubuntu13.5" extrainfo="Ubuntu Linux; protocol 2.0" ostype="Linux" method="probed" conf="10"><cpe>cpe:/a:openbsd:openssh:9.6p1</cpe><cpe>cpe:/o:linux:linux_kernel</cpe></service><script id="ssh-hostkey" output="&#xa;  256 3c:6e:1f:2a:7b:90:11:aa:bc:de:f0:12:34:56:78:9a (ECDSA)&#xa;  256 aa:bb:cc:dd:ee:ff:00:11:22:33:44:55:66:77:88:99 (ED25519)"><table>
+<elem key="type">ecdsa-sha2-nistp256</elem>
+<elem key="bits">256</elem>
+<elem key="fingerprint">3c6e1f2a7b9011aabcdef0123456789a</elem>
+</table>
+<table>
+<elem key="type">ssh-ed25519</elem>
+<elem key="bits">256</elem>
+<elem key="fingerprint">aabbccddeeff00112233445566778899</elem>
+</table>
+</script></port>
+<port protocol="tcp" portid="8080"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="http" product="Jetty" version="10.0.20" method="probed" conf="10"><cpe>cpe:/a:eclipse:jetty:10.0.20</cpe></service></port>
+<port protocol="tcp" portid="3389"><state state="filtered" reason="no-response" reason_ttl="0"/><service name="ms-wbt-server" method="table" conf="3"/></port>
+<port protocol="udp" portid="53"><state state="closed" reason="port-unreach" reason_ttl="64"/><service name="domain" method="table" conf="3"/></port>
+<port protocol="udp" portid="161"><state state="closed" reason="port-unreach" reason_ttl="64"/><service name="snmp" method="table" conf="3"/></port>
+</ports>
+<os><portused state="open" proto="tcp" portid="22"/>
+<portused state="closed" proto="tcp" portid="80"/>
+<osmatch name="Linux 4.15 - 5.19" accuracy="98" line="69748">
+<osclass type="general purpose" vendor="Linux" osfamily="Linux" osgen="4.X" accuracy="98"><cpe>cpe:/o:linux:linux_kernel:4</cpe></osclass>
+<osclass type="general purpose" vendor="Linux" osfamily="Linux" osgen="5.X" accuracy="98"><cpe>cpe:/o:linux:linux_kernel:5</cpe></osclass>
+</osmatch>
+<osmatch name="Linux 2.6.32" accuracy="92" line="54203">
+<osclass type="general purpose" vendor="Linux" osfamily="Linux" osgen="2.6.X" accuracy="92"><cpe>cpe:/o:linux:linux_kernel:2.6.32</cpe></osclass>
+</osmatch>
+</os>
+<distance value="1"/>
+<hostscript><script id="smb2-security-mode" output="&#xa;  3:1:1: &#xa;    Message signing enabled but not required"><table key="3:1:1">
+<elem>Message signing enabled but not required</elem>
+</table>
+</script><script id="nbstat" output="NetBIOS name: FILES2, NetBIOS user: &lt;unknown&gt;, NetBIOS MAC: &lt;unknown&gt; (unknown)"/><script id="smb2-time" output="&#xa;  date: 2025-03-18T09:15:10&#xa;  start_date: N/A"/></hostscript>
+<trace>
+<hop ttl="1" ipaddr="192.168.56.5" rtt="0.61" host="files.lab.internal"/>
+</trace>
+<times srtt="612" rttvar="240" to="100000"/>
+<futurefield flavour="unknown-to-genmap"/>
+</host>
+<host starttime="1742289243" endtime="1742289260"><status state="up" reason="arp-response" reason_ttl="0"/>
+<address addr="192.168.56.7" addrtype="ipv4"/>
+<address addr="08:00:27:AA:BB:07" addrtype="mac" vendor="Oracle VirtualBox virtual NIC"/>
+<hostnames>
+</hostnames>
+<ports><port protocol="tcp" portid="22"><state state="open" reason="syn-ack" reason_ttl="64"/><service name="ssh" product="OpenSSH" version="9.6p1" method="probed" conf="10"><cpe>cpe:/a:openbsd:openssh:9.6p1</cpe></service></port>
+</ports>
+<times srtt="500" rttvar="200" to="100000"/>
+</host>
+<host starttime="1742289243" endtime="1742289270"><status state="up" reason="echo-reply" reason_ttl="52"/>
+<address addr="10.9.9.9" addrtype="ipv4"/>
+<hostnames>
+</hostnames>
+<ports><port protocol="tcp" portid="443"><state state="open" reason="syn-ack" reason_ttl="52"/><service name="https" method="table" conf="3"/></port>
+</ports>
+</host>
+<host><status state="down" reason="no-response" reason_ttl="0"/>
+<address addr="192.168.56.2" addrtype="ipv4"/>
+</host>
+<postscript><script id="ssh-hostkey" output="Possible duplicate hosts&#xa;Key 256 3c:6e:1f:2a (ECDSA) used by:&#xa;  192.168.56.5"/></postscript>
+<runstats><finished time="1742289370" timestr="Tue Mar 18 09:16:10 2025" summary="Nmap done at Tue Mar 18 09:16:10 2025; 9 IP addresses (4 hosts up) scanned in 128.10 seconds" elapsed="128.10" exit="success"/><hosts up="4" down="5" total="9"/>
+</runstats>
+</nmaprun>

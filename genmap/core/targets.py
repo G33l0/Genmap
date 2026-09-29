@@ -12,7 +12,7 @@ import ipaddress
 import re
 from dataclasses import dataclass
 from enum import Enum
-from typing import Iterable
+from typing import Iterable, Optional
 
 from genmap.errors import TargetError
 
@@ -211,3 +211,75 @@ def estimate_host_count(targets: Iterable[Target]) -> int | None:
             return None
         total += target.estimated_hosts
     return total
+
+
+def _octet_matches(part: str, value: int) -> bool:
+    if part == "*":
+        return True
+    for piece in part.split(","):
+        if "-" in piece:
+            low, high = piece.split("-", 1)
+            if int(low) <= value <= int(high):
+                return True
+        elif int(piece) == value:
+            return True
+    return False
+
+
+def address_in_target(address: str, target: Target, hostnames: Iterable[str] = ()) -> Optional[bool]:
+    """Whether ``address`` is covered by one target expression.
+
+    Returns None when that cannot be decided without name resolution, for
+    example for a hostname target that does not match any of ``hostnames``.
+    """
+    try:
+        ip = ipaddress.ip_address(address)
+    except ValueError:
+        return None
+    kind = target.kind
+    if kind in (TargetKind.IPV4, TargetKind.IPV6):
+        return ip == ipaddress.ip_address(target.raw)
+    if kind in (TargetKind.IPV4_NETWORK, TargetKind.IPV6_NETWORK):
+        return ip in ipaddress.ip_network(target.raw, strict=False)
+    if kind == TargetKind.IPV4_OCTET_RANGE:
+        if ip.version != 4:
+            return False
+        parts = target.raw.split(".")
+        return all(_octet_matches(part, int(octet)) for part, octet in zip(parts, str(ip).split(".")))
+    names = {n.lower().rstrip(".") for n in hostnames}
+    if kind == TargetKind.HOSTNAME:
+        return True if target.raw.lower().rstrip(".") in names else None
+    return None
+
+
+def address_in_scope(
+    address: str,
+    targets: Iterable[str],
+    exclusions: Iterable[str] = (),
+    hostnames: Iterable[str] = (),
+) -> Optional[bool]:
+    """Whether a scan with these target expressions covered ``address``.
+
+    True and False are definite answers; None means Genmap cannot tell (for
+    example the scan named hosts that would need DNS to resolve, or read its
+    targets from a file).
+    """
+    names = list(hostnames)
+    for expression in exclusions:
+        try:
+            if address_in_target(address, parse_target(expression), names):
+                return False
+        except TargetError:
+            continue
+    undecided = False
+    for expression in targets:
+        try:
+            covered = address_in_target(address, parse_target(expression), names)
+        except TargetError:
+            undecided = True
+            continue
+        if covered:
+            return True
+        if covered is None:
+            undecided = True
+    return None if undecided else False
