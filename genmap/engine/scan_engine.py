@@ -90,6 +90,7 @@ class ScanJob(QObject):
         self._timeout_timer = QTimer(self)
         self._timeout_timer.setSingleShot(True)
         self._timeout_timer.timeout.connect(self._on_timeout)
+        self.profile_id: Optional[int] = None
         self.stdout_lines: list[str] = []
         self.stderr_lines: list[str] = []
 
@@ -346,7 +347,13 @@ class ScanEngine(QObject):
             noninteractive=False,
         )
 
-    def start(self, config: ScanConfiguration, *, profile_name: Optional[str] = None) -> ScanJob:
+    def start(
+        self,
+        config: ScanConfiguration,
+        *,
+        profile_name: Optional[str] = None,
+        profile_id: Optional[int] = None,
+    ) -> ScanJob:
         if self.is_busy:
             raise ScanEngineBusyError(
                 remedy="Wait for the running scan to finish or cancel it before starting another.",
@@ -380,6 +387,7 @@ class ScanEngine(QObject):
             keep_console_logs=self.keep_console_logs,
             parent=self,
         )
+        job.profile_id = profile_id
         self._jobs[record.run_id] = job
         job.finished.connect(lambda _record, job=job: self._on_job_finished(job))
         try:

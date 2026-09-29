@@ -125,14 +125,37 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     from genmap.ui.widgets.error_dialog import show_error
 
     app.setWindowIcon(app_icon())
-    context = AppContext(app, paths, store)
+    from genmap.errors import GenmapError
+    from genmap.storage import open_database
+
+    try:
+        database = open_database(paths.database_file)
+    except GenmapError as exc:
+        log.critical("Database unavailable: %s", exc.details or exc.message)
+        show_error(None, "Genmap cannot start", exc.message, exc.remedy, exc.details)
+        return 1
+    except Exception as exc:
+        log.critical("Database unavailable", exc_info=True)
+        from genmap.ui.widgets.error_dialog import show_exception
+
+        show_exception(None, exc, "Genmap cannot start")
+        return 1
+    context = AppContext(app, paths, store, database)
     window = MainWindow(context)
     window.show()
     window.start()
     if store.load_problem is not None:
         problem = store.load_problem
         show_error(window, "Settings reset", problem.message, problem.remedy, problem.details)
+    if database.recovered_from is not None:
+        show_error(
+            window,
+            "Database rebuilt",
+            "The Genmap database was damaged, so a new one was created and scan history is being rebuilt from the scan folders.",
+            f"The damaged file was kept as {database.recovered_from.name}. Saved profiles and target groups from it could not be recovered automatically.",
+        )
     context.refresh_environment()
+    context.reconcile_index()
     if args.open:
         window.open_xml_file(args.open)
     exit_code = app.exec()

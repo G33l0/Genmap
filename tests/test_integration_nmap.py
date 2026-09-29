@@ -120,3 +120,32 @@ def test_executable_that_cannot_start(qtbot, tmp_path):
         pass
     assert blocker.args[0].status == RunStatus.FAILED
     assert "could not be started" in blocker.args[0].error_message
+
+
+def test_finished_scan_is_indexed_in_the_database(qtbot, qapp, app_paths):
+    from genmap.settings import SettingsStore
+    from genmap.ui.app_context import AppContext
+
+    store = SettingsStore(app_paths.settings_file)
+    store.load()
+    context = AppContext(qapp, app_paths, store)
+    try:
+        context.nmap_module.refresh_environment(include_interfaces=False)
+        config = ScanConfiguration()
+        config.targets.targets = ["127.0.0.1"]
+        config.techniques.tcp = TcpScanTechnique.CONNECT
+        config.ports.mode = PortSelectionMode.SPECIFIC
+        config.ports.specification = "1-50"
+        job = context.engine.start(config, profile_name="Integration")
+        assert context.scan_index.get(job.run_id).status == RunStatus.RUNNING.value
+        with qtbot.waitSignal(job.finished, timeout=120000):
+            pass
+        qtbot.waitUntil(lambda: context.scan_index.get(job.run_id).results_indexed, timeout=30000)
+        scan = context.scan_index.get(job.run_id)
+        assert scan.status == RunStatus.COMPLETED.value
+        assert scan.hosts_up == 1
+        assert [t.expression for t in scan.targets] == ["127.0.0.1"]
+        assert context.scan_index.list_scans(search="Integration")[0].run_id == job.run_id
+    finally:
+        context.shutdown()
+        context.database.dispose()

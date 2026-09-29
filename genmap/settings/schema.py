@@ -78,6 +78,7 @@ class NseSettings(SettingsSection):
 
 class StorageSettings(SettingsSection):
     data_directory_override: Optional[str] = None
+    seeded_profiles: list[str] = Field(default_factory=list)
     keep_raw_output: bool = True
     max_stored_scans: int = Field(default=0, ge=0)
 

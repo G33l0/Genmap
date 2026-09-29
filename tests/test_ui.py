@@ -170,6 +170,7 @@ def test_history_lists_runs(window, context, fixtures):
     shutil.copy(fixtures / "lan_inventory.xml", context.run_store.xml_path(record.run_id))
     record.status = RunStatus.COMPLETED
     context.run_store.save(record)
+    context.scan_index.reconcile(context.run_store)
     window.show_page("history")
     assert window.history.model.rowCount() == 1
     assert window.history.open_button.isEnabled()
